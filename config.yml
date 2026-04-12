@@ -1,4 +1,6 @@
 servers: 'none'
+deploy:
+  keep_releases: 3
 installs:
   swapspace: yes
   nginx: yes

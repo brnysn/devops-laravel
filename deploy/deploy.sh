@@ -11,6 +11,52 @@ cd $my_path
 # Load common
 source $my_path/../common/load_common.sh
 
+keep_releases="${deploy_keep_releases:-6}"
+case "$keep_releases" in
+  ''|*[!0-9]*)
+    keep_releases=6
+    ;;
+esac
+if [ "$keep_releases" -lt 1 ]; then
+  keep_releases=1
+fi
+
+cleanup_old_deployments() {
+  local keep_count="$1"
+  local reason="$2"
+  local release_dirs=()
+  local release_dir
+  local current_release
+  local removed_count=0
+
+  current_release=$(readlink -f "$deploy_directory/current" 2>/dev/null || true)
+
+  while IFS= read -r release_dir; do
+    [ -n "$release_dir" ] || continue
+    release_dirs+=("$release_dir")
+  done < <(find "$deploy_directory/releases" -mindepth 1 -maxdepth 1 -type d | sort -r)
+
+  title "$reason"
+  status "Keeping the most recent $keep_count release(s)"
+
+  if [ ${#release_dirs[@]} -le "$keep_count" ]; then
+    status "Found ${#release_dirs[@]} release(s); nothing to delete"
+    return 0
+  fi
+
+  for release_dir in "${release_dirs[@]:keep_count}"; do
+    if [ -n "$current_release" ] && [ "$release_dir" = "$current_release" ]; then
+      status "Keeping active release: $release_dir"
+      continue
+    fi
+    rm -rf -- "$release_dir"
+    status "Deleted: $release_dir"
+    removed_count=$((removed_count + 1))
+  done
+
+  status "Deleted $removed_count old release(s)"
+}
+
 title "Deploying to other servers"
 # NOTE: This is a bit sketchy
 # We only have the ubuntu user on this node that can connect to the other nodes
@@ -54,6 +100,8 @@ title "Starting Deployment: $username"
 if [ ! -d $deploy_directory/releases ]; then
     mkdir -p $deploy_directory/releases
 fi
+
+cleanup_old_deployments "$keep_releases" "Pre-Deploy Cleanup"
 
 # Deployments will be prefixed with the current timestamp
 date_string=$(date +"%Y-%m-%d-%H-%M-%S")
@@ -127,9 +175,7 @@ status "  Linking: $deploy_directory/releases/$foldername"
 ln -sf $deploy_directory/releases/$foldername $deploy_directory/current
 
 # Cleanup Old Deployments
-max_to_keep=6
-title "Cleanup (keeping the most recent $max_to_keep deployments)"
-ls -dt $deploy_directory/releases/* | tail -n +$max_to_keep | xargs rm -rf
+cleanup_old_deployments "$keep_releases" "Post-Deploy Cleanup"
 
 
 # Return back to the original directory
