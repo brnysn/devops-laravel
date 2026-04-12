@@ -6,9 +6,9 @@ sudo apt-add-repository ppa:ondrej/php -y
 # Update Package Lists
 sudo apt-get update -y
 
-# Install Generic PHP packages...TODO: Filter these out
+# Only php8.3-* here: unversioned php-* pulls Ondrej's default PHP (e.g. 8.5) and steals the `php` alternative
 sudo apt-get install -y --allow-change-held-packages \
-php-imagick php-memcached php-redis php-xdebug php-dev imagemagick mcrypt
+php8.3-imagick imagemagick
 
 # PHP 8.3
 sudo apt-get install -y --allow-change-held-packages \
@@ -61,3 +61,12 @@ sudo printf "[openssl]\n" | sudo tee -a /etc/php/8.3/fpm/php.ini
 sudo printf "openssl.cainfo = /etc/ssl/certs/ca-certificates.crt\n" | sudo tee -a /etc/php/8.3/fpm/php.ini
 sudo printf "[curl]\n" | sudo tee -a /etc/php/8.3/fpm/php.ini
 sudo printf "curl.cainfo = /etc/ssl/certs/ca-certificates.crt\n" | sudo tee -a /etc/php/8.3/fpm/php.ini
+
+# Default `php` / phar / phpdbg → 8.3 (otherwise apt may leave `php` on newest parallel install, e.g. 8.5)
+if command -v update-alternatives >/dev/null 2>&1; then
+  for alt in php phar phpdbg php-cgi phar.phar; do
+    if [ -x "/usr/bin/${alt}8.3" ]; then
+      sudo update-alternatives --set "$alt" "/usr/bin/${alt}8.3" 2>/dev/null || true
+    fi
+  done
+fi

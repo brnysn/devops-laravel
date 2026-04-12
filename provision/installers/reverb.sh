@@ -6,7 +6,16 @@
 PHP_VER="${installs_php_version:-8.3}"
 APP_PATH="${installs_reverb_app_path:-/var/www/html}"
 
-sudo apt-get install -y "php${PHP_VER}-pcntl"
+# pcntl: separate package on some releases; on others it is already built into php-cli
+if ! sudo apt-get install -y "php${PHP_VER}-pcntl" 2>/dev/null; then
+  if php -m 2>/dev/null | grep -qx 'pcntl'; then
+    :
+  elif command -v "php${PHP_VER}" >/dev/null 2>&1 && php${PHP_VER} -m 2>/dev/null | grep -qx 'pcntl'; then
+    :
+  else
+    echo "Warning: php${PHP_VER}-pcntl not in apt and pcntl not loaded; install/enable pcntl for Reverb (Ondrej: php${PHP_VER}-pcntl)." >&2
+  fi
+fi
 
 LOG_FILE=/var/log/laravel-reverb.log
 sudo touch "$LOG_FILE"

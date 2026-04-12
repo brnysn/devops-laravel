@@ -216,19 +216,84 @@ title "Clean Up"
 sudo apt -y autoremove
 sudo apt -y clean
 
-
+# Re-pin default `php` after final upgrade (parallel PHP installs may reset alternatives)
+case $installs_php_install in
+  [yY][eE][sS]|[yY])
+    PV="${installs_php_version}"
+    if [ -n "$PV" ] && [ -x "/usr/bin/php${PV}" ]; then
+      for alt in php phar phpdbg php-cgi phar.phar; do
+        if [ -x "/usr/bin/${alt}${PV}" ]; then
+          sudo update-alternatives --set "$alt" "/usr/bin/${alt}${PV}" 2>/dev/null || true
+        fi
+      done
+    fi
+    ;;
+esac
 
 title "Status Report"
-status "Nginx Version: $(nginx -v)"
-status "PHP VERSION: $(php -r 'echo PHP_VERSION;')"
-status "Composer Version: $(composer -V)"
-status "Node Version: $(node -v)"
-status "NPM Version: $(npm -v)"
-status "Redis Version: $(redis-cli -v)"
-status "SQLite Version: $(sqlite3 --version)"
-status "MySQL Version: $(mysql -V)"
-status "Certbot Version: $(certbot --version)"
-status "Swap Space: $(swapon --show)"
+if command -v nginx >/dev/null 2>&1; then
+  status "Nginx Version: $(nginx -v 2>&1)"
+else
+  status "Nginx Version: (not installed)"
+fi
+
+PHP_REPORT_BIN=php
+case $installs_php_install in
+  [yY][eE][sS]|[yY])
+    if command -v "php${installs_php_version}" >/dev/null 2>&1; then
+      PHP_REPORT_BIN="php${installs_php_version}"
+    fi
+    ;;
+esac
+if command -v "$PHP_REPORT_BIN" >/dev/null 2>&1; then
+  status "PHP VERSION ($PHP_REPORT_BIN): $($PHP_REPORT_BIN -r 'echo PHP_VERSION;' 2>/dev/null)"
+else
+  status "PHP VERSION: (not installed)"
+fi
+
+if command -v composer >/dev/null 2>&1; then
+  status "Composer Version: $(composer -V 2>/dev/null)"
+else
+  status "Composer Version: (not installed)"
+fi
+
+if command -v node >/dev/null 2>&1; then
+  status "Node Version: $(node -v)"
+else
+  status "Node Version: (not installed)"
+fi
+
+if command -v npm >/dev/null 2>&1; then
+  status "NPM Version: $(npm -v)"
+else
+  status "NPM Version: (not installed)"
+fi
+
+if command -v redis-cli >/dev/null 2>&1; then
+  status "Redis Version: $(redis-cli -v)"
+else
+  status "Redis Version: (not installed)"
+fi
+
+if command -v sqlite3 >/dev/null 2>&1; then
+  status "SQLite Version: $(sqlite3 --version)"
+else
+  status "SQLite Version: (not installed)"
+fi
+
+if command -v mysql >/dev/null 2>&1; then
+  status "MySQL Version: $(mysql -V 2>/dev/null)"
+else
+  status "MySQL Version: (not installed)"
+fi
+
+if command -v certbot >/dev/null 2>&1; then
+  status "Certbot Version: $(certbot --version 2>/dev/null)"
+else
+  status "Certbot Version: (not installed)"
+fi
+
+status "Swap Space: $(swapon --show 2>/dev/null || echo none)"
 
 # Return back to the original directory
 cd $initial_working_directory
