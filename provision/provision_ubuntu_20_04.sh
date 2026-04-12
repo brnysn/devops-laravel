@@ -93,6 +93,24 @@ case $installs_redis in
   status "not installing redis";;
 esac
 
+title "Configure Laravel Reverb"
+case $installs_reverb_install in
+  [yY][eE][sS]|[yY])
+    source ./installers/reverb.sh
+    status "reverb supervisor program configured";;
+  *)
+    status "not configuring reverb";;
+esac
+
+title "Install Typesense"
+case $installs_typesense_install in
+  [yY][eE][sS]|[yY])
+    source ./installers/typesense.sh
+    status "typesense installed";;
+  *)
+    status "not installing typesense";;
+esac
+
 if [ $sqlite -eq 1 ]; then
   title "Install SQLite"
   source ./installers/sqlite.sh

@@ -20,6 +20,10 @@ installs:
   mailhog: no
   ngrok: no
   postfix: no
-
-
+  reverb:
+    install: no
+    app_path: /var/www/html
+  typesense:
+    install: no
+    version: "26.0"
 
