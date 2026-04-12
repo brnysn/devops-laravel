@@ -253,11 +253,57 @@ case $installs_php_install in
 esac
 
 title "Status Report"
-if command -v nginx >/dev/null 2>&1; then
-  status "Nginx Version: $(nginx -v 2>&1)"
-else
-  status "Nginx Version: (not installed)"
-fi
+report_binary_version() {
+  local label="$1"
+  local binary="$2"
+  shift 2
+
+  if ! command -v "$binary" >/dev/null 2>&1; then
+    status "$label: (not installed)"
+    return 0
+  fi
+
+  local output
+  local exit_code
+  output=$(timeout 15s "$binary" "$@" 2>&1)
+  exit_code=$?
+
+  case $exit_code in
+    0)
+      status "$label: $output"
+      ;;
+    124)
+      status "$label: (timed out)"
+      ;;
+    *)
+      status "$label: (error running $binary)"
+      ;;
+  esac
+}
+
+report_shell_output() {
+  local label="$1"
+  shift
+
+  local output
+  local exit_code
+  output=$(timeout 15s "$@" 2>&1)
+  exit_code=$?
+
+  case $exit_code in
+    0)
+      status "$label: $output"
+      ;;
+    124)
+      status "$label: (timed out)"
+      ;;
+    *)
+      status "$label: (error)"
+      ;;
+  esac
+}
+
+report_binary_version "Nginx Version" nginx -v
 
 PHP_REPORT_BIN=php
 case $installs_php_install in
@@ -267,55 +313,15 @@ case $installs_php_install in
     fi
     ;;
 esac
-if command -v "$PHP_REPORT_BIN" >/dev/null 2>&1; then
-  status "PHP VERSION ($PHP_REPORT_BIN): $($PHP_REPORT_BIN -r 'echo PHP_VERSION;' 2>/dev/null)"
-else
-  status "PHP VERSION: (not installed)"
-fi
-
-if command -v composer >/dev/null 2>&1; then
-  status "Composer Version: $(composer -V 2>/dev/null)"
-else
-  status "Composer Version: (not installed)"
-fi
-
-if command -v node >/dev/null 2>&1; then
-  status "Node Version: $(node -v)"
-else
-  status "Node Version: (not installed)"
-fi
-
-if command -v npm >/dev/null 2>&1; then
-  status "NPM Version: $(npm -v)"
-else
-  status "NPM Version: (not installed)"
-fi
-
-if command -v redis-cli >/dev/null 2>&1; then
-  status "Redis Version: $(redis-cli -v)"
-else
-  status "Redis Version: (not installed)"
-fi
-
-if command -v sqlite3 >/dev/null 2>&1; then
-  status "SQLite Version: $(sqlite3 --version)"
-else
-  status "SQLite Version: (not installed)"
-fi
-
-if command -v mysql >/dev/null 2>&1; then
-  status "MySQL Version: $(mysql -V 2>/dev/null)"
-else
-  status "MySQL Version: (not installed)"
-fi
-
-if command -v certbot >/dev/null 2>&1; then
-  status "Certbot Version: $(certbot --version 2>/dev/null)"
-else
-  status "Certbot Version: (not installed)"
-fi
-
-status "Swap Space: $(swapon --show 2>/dev/null || echo none)"
+report_binary_version "PHP VERSION ($PHP_REPORT_BIN)" "$PHP_REPORT_BIN" -r 'echo PHP_VERSION;'
+report_binary_version "Composer Version" composer -V
+report_binary_version "Node Version" node -v
+report_binary_version "NPM Version" npm -v
+report_binary_version "Redis Version" redis-cli -v
+report_binary_version "SQLite Version" sqlite3 --version
+report_binary_version "MySQL Version" mysql -V
+report_binary_version "Certbot Version" certbot --version
+report_shell_output "Swap Space" swapon --show
 
 # Return back to the original directory
 cd $initial_working_directory
