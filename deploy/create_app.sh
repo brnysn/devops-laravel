@@ -146,6 +146,9 @@ reverb_installed_for_app() {
   sudo -u "$username" bash -lc "cd $deploy_directory/current && composer show laravel/reverb --no-interaction >/dev/null 2>&1"
 }
 
+reverb_declared=0
+reverb_installed=0
+
 # Guard against overwriting and existing user
 title "Create Deployment User: $username"
 if id "$username" >/dev/null 2>&1; then
@@ -267,7 +270,16 @@ fi
 title "Generating Application Key"
 sudo -u $username php $deploy_directory/current/artisan key:generate
 
-if [ "$reverb_enabled" -eq 1 ] && reverb_installed_for_app; then
+if [ "$reverb_enabled" -eq 1 ]; then
+  if reverb_declared_in_composer; then
+    reverb_declared=1
+  fi
+  if reverb_installed_for_app; then
+    reverb_installed=1
+  fi
+fi
+
+if [ "$reverb_enabled" -eq 1 ] && [ "$reverb_installed" -eq 1 ]; then
   title "Laravel Reverb (config + keys)"
   sudo -u "$username" bash -lc "cd $deploy_directory/current && php artisan reverb:install --no-interaction" || status "reverb:install skipped or failed (check composer package)"
   configure_reverb_env
@@ -359,7 +371,7 @@ else
   status "Already exists: $pulse_conf_file"
 fi
 
-if [ "$reverb_enabled" -eq 1 ] && reverb_installed_for_app; then
+if [ "$reverb_enabled" -eq 1 ] && [ "$reverb_installed" -eq 1 ]; then
   reverb_conf_file="/etc/supervisor/conf.d/${username}_reverb.conf"
   if [ ! -f "$reverb_conf_file" ]; then
       sudo cp $root_path/deploy/_supervisor.conf "$reverb_conf_file"
@@ -376,7 +388,7 @@ if [ "$reverb_enabled" -eq 1 ] && reverb_installed_for_app; then
   sudo supervisorctl reread >/dev/null 2>&1 || true
   sudo supervisorctl update >/dev/null 2>&1 || true
   sudo supervisorctl restart "reverb_$username" >/dev/null 2>&1 || true
-elif [ "$reverb_enabled" -eq 1 ] && reverb_declared_in_composer; then
+elif [ "$reverb_enabled" -eq 1 ] && [ "$reverb_declared" -eq 1 ]; then
   status "Reverb is declared in composer.json but not installed in vendor. Check composer install output, composer.lock constraints, and Laravel version compatibility, then deploy again."
 elif [ "$reverb_enabled" -eq 1 ]; then
   status "Reverb enabled in config.yml but laravel/reverb is not declared for this app. Add the package, deploy again, then re-run create_app or add the process manually."
