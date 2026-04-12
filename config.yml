@@ -20,9 +20,9 @@ installs:
   mailhog: no
   ngrok: no
   postfix: no
-  reverb: no
+  reverb: yes
   typesense:
-    install: no
+    install: yes
     version: "26.0"
     api_key: change-me-typesense-key
     api_address: 127.0.0.1
