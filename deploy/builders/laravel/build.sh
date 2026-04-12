@@ -11,17 +11,28 @@ source $builder_directory/symlinks.sh
 
 if [ ! -f archived_deployed.lock ]; then
   status "Composer Install"
-  composer install
+  if ! composer install; then
+    error "Composer install failed"
+    return 1 2>/dev/null || exit 1
+  fi
 
   status "NPM Install"
-  npm install
+  if ! npm install; then
+    error "NPM install failed"
+    return 1 2>/dev/null || exit 1
+  fi
 
   status "Build Front End Assets"
-  npm run build
+  if ! npm run build; then
+    error "Front end build failed"
+    return 1 2>/dev/null || exit 1
+  fi
 else
   status "Build completed when creating archive"
 fi
 
 status "Migrations"
-php artisan migrate --force
-
+if ! php artisan migrate --force; then
+  error "Database migrations failed"
+  return 1 2>/dev/null || exit 1
+fi
