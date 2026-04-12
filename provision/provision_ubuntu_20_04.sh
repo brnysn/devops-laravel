@@ -114,10 +114,11 @@ case $installs_redis in
 esac
 
 title "Configure Laravel Reverb"
-case $installs_reverb_install in
+reverb_config_value="${installs_reverb:-${installs_reverb_install:-no}}"
+case $reverb_config_value in
   [yY][eE][sS]|[yY])
     source ./installers/reverb.sh
-    status "reverb supervisor program configured";;
+    status "reverb runtime prerequisites configured";;
   *)
     status "not configuring reverb";;
 esac
@@ -318,5 +319,3 @@ status "Swap Space: $(swapon --show 2>/dev/null || echo none)"
 
 # Return back to the original directory
 cd $initial_working_directory
-
-

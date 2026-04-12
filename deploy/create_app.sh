@@ -21,12 +21,118 @@ cd "$my_path"
 # Load common
 source $my_path/../common/load_common.sh
 
-# Reverb (config.yml installs.reverb.install): port stable per username; nginx + .env + daemon when enabled
+# Reverb (config.yml installs.reverb): port stable per username; nginx + .env + daemon when enabled
 reverb_enabled=0
-case "${installs_reverb_install:-}" in
+reverb_config_value="${installs_reverb:-${installs_reverb_install:-no}}"
+case "${reverb_config_value:-}" in
   [yY][eE][sS]|[yY]) reverb_enabled=1 ;;
 esac
 reverb_listen_port=$(( 9080 + $(printf '%s' "$username" | cksum | awk '{print $1 % 1000}') ))
+
+typesense_enabled=0
+case "${installs_typesense_install:-}" in
+  [yY][eE][sS]|[yY]) typesense_enabled=1 ;;
+esac
+typesense_api_key="${installs_typesense_api_key:-change-me-typesense-key}"
+typesense_host="${installs_typesense_api_address:-127.0.0.1}"
+typesense_port="${installs_typesense_api_port:-8108}"
+typesense_protocol="${installs_typesense_protocol:-http}"
+env_file="$deploy_directory/symlinks/.env"
+
+upsert_env_value() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  local escaped_value
+
+  if [ ! -f "$file" ]; then
+    return 1
+  fi
+
+  if grep -q "^${key}=" "$file"; then
+    escaped_value=$(printf '%s' "$value" | sed 's/[\\&|]/\\&/g')
+    sed -i "s|^${key}=.*|${key}=${escaped_value}|" "$file"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$file"
+  fi
+}
+
+get_env_value() {
+  local file="$1"
+  local key="$2"
+  local value
+
+  value=$(grep -E "^${key}=" "$file" | tail -n 1 | cut -d= -f2-)
+  value="${value%\"}"
+  value="${value#\"}"
+  printf '%s' "$value"
+}
+
+derive_public_app_endpoint() {
+  local file="$1"
+  local app_url
+  local parsed
+
+  app_url=$(get_env_value "$file" APP_URL)
+  parsed=$(php -r '
+    $url = $argv[1] ?? "";
+    $defaultPort = $argv[2] ?? "80";
+    $parts = parse_url($url ?: "");
+
+    $scheme = $parts["scheme"] ?? "http";
+    $host = $parts["host"] ?? "localhost";
+    $port = $parts["port"] ?? $defaultPort;
+
+    echo $scheme, PHP_EOL, $host, PHP_EOL, $port, PHP_EOL;
+  ' "$app_url" "$app_port" 2>/dev/null)
+
+  app_public_scheme=$(printf '%s\n' "$parsed" | sed -n '1p')
+  app_public_host=$(printf '%s\n' "$parsed" | sed -n '2p')
+  app_public_port=$(printf '%s\n' "$parsed" | sed -n '3p')
+
+  if [ -z "$app_public_scheme" ]; then
+    app_public_scheme="http"
+  fi
+  if [ -z "$app_public_host" ]; then
+    app_public_host="localhost"
+  fi
+  if [ -z "$app_public_port" ]; then
+    app_public_port="$app_port"
+  fi
+}
+
+configure_typesense_env() {
+  if [ "$typesense_enabled" -eq 0 ] || [ ! -f "$env_file" ]; then
+    return 0
+  fi
+
+  upsert_env_value "$env_file" "TYPESENSE_API_KEY" "$typesense_api_key"
+  upsert_env_value "$env_file" "TYPESENSE_HOST" "$typesense_host"
+  upsert_env_value "$env_file" "TYPESENSE_PORT" "$typesense_port"
+  upsert_env_value "$env_file" "TYPESENSE_PATH" ""
+  upsert_env_value "$env_file" "TYPESENSE_PROTOCOL" "$typesense_protocol"
+  chown "$username:$username" "$env_file"
+}
+
+configure_reverb_env() {
+  if [ "$reverb_enabled" -eq 0 ] || [ ! -f "$env_file" ]; then
+    return 0
+  fi
+
+  derive_public_app_endpoint "$env_file"
+
+  upsert_env_value "$env_file" "BROADCAST_CONNECTION" "reverb"
+  upsert_env_value "$env_file" "REVERB_HOST" "$app_public_host"
+  upsert_env_value "$env_file" "REVERB_PORT" "$app_public_port"
+  upsert_env_value "$env_file" "REVERB_SCHEME" "$app_public_scheme"
+  upsert_env_value "$env_file" "REVERB_SERVER_HOST" "127.0.0.1"
+  upsert_env_value "$env_file" "REVERB_SERVER_PORT" "$reverb_listen_port"
+  upsert_env_value "$env_file" "VITE_REVERB_APP_KEY" '"${REVERB_APP_KEY}"'
+  upsert_env_value "$env_file" "VITE_REVERB_HOST" '"${REVERB_HOST}"'
+  upsert_env_value "$env_file" "VITE_REVERB_PORT" '"${REVERB_PORT}"'
+  upsert_env_value "$env_file" "VITE_REVERB_SCHEME" '"${REVERB_SCHEME}"'
+  chown "$username:$username" "$env_file"
+}
 
 # Guard against overwriting and existing user
 title "Create Deployment User: $username"
@@ -66,28 +172,25 @@ EOF
 if [ ! -d $deploy_directory/symlinks ]; then
   mkdir -p $deploy_directory/symlinks
 fi
-if [ ! -f $deploy_directory/symlinks/.env ]; then
-  cp $my_path/_laravel.env $deploy_directory/symlinks/.env
-  sed -i "s|DB_DATABASE=.*|DB_DATABASE=$username|" $deploy_directory/symlinks/.env
-  sed -i "s|DB_USERNAME=.*|DB_USERNAME=$username|" $deploy_directory/symlinks/.env
-  sed -i "s|DB_PASSWORD=.*|DB_PASSWORD=$db_password|" $deploy_directory/symlinks/.env
-  sed -i "s|HORIZON_PREFIX=.*|HORIZON_PREFIX=$username|" $deploy_directory/symlinks/.env
-  if [ "$reverb_enabled" -eq 1 ]; then
-    grep -q '^REVERB_HOST=' $deploy_directory/symlinks/.env || echo "REVERB_HOST=127.0.0.1" >> $deploy_directory/symlinks/.env
-    grep -q '^REVERB_PORT=' $deploy_directory/symlinks/.env || echo "REVERB_PORT=$reverb_listen_port" >> $deploy_directory/symlinks/.env
-    grep -q '^REVERB_SCHEME=' $deploy_directory/symlinks/.env || echo "REVERB_SCHEME=http" >> $deploy_directory/symlinks/.env
-  fi
+if [ ! -f $env_file ]; then
+  cp $my_path/_laravel.env $env_file
+  sed -i "s|DB_DATABASE=.*|DB_DATABASE=$username|" $env_file
+  sed -i "s|DB_USERNAME=.*|DB_USERNAME=$username|" $env_file
+  sed -i "s|DB_PASSWORD=.*|DB_PASSWORD=$db_password|" $env_file
+  sed -i "s|HORIZON_PREFIX=.*|HORIZON_PREFIX=$username|" $env_file
 
-  echo "Created .env file: $deploy_directory/symlinks/.env"
+  echo "Created .env file: $env_file"
 else
-  echo "Found .env file: $deploy_directory/symlinks/.env"
+  echo "Found .env file: $env_file"
 fi
 EOF
 
+  configure_typesense_env
+
   title "Next Steps"
   echo "1. Install the above deployment key into your Git repo."
-  echo "2. Review the created .env ($deploy_directory/symlinks/.env) and make desired changes."
-  echo "3. For Typesense: set .env if using Scout (server service from provision)."
+  echo "2. Review the created .env ($env_file) and set APP_URL correctly for this application."
+  echo "3. Typesense connection variables are filled automatically when the service is enabled in config.yml."
   echo "4. Re run the following: appCreate $username"
 
   exit
@@ -151,14 +254,16 @@ sudo -u $username php $deploy_directory/current/artisan key:generate
 
 if [ "$reverb_enabled" -eq 1 ] && [ -d "$deploy_directory/current/vendor/laravel/reverb" ]; then
   title "Laravel Reverb (config + keys)"
-  sudo -u "$username" sed -i "s/^REVERB_HOST=.*/REVERB_HOST=127.0.0.1/" "$deploy_directory/symlinks/.env" 2>/dev/null || true
-  sudo -u "$username" sed -i "s/^REVERB_PORT=.*/REVERB_PORT=$reverb_listen_port/" "$deploy_directory/symlinks/.env" 2>/dev/null || true
-  grep -q '^REVERB_HOST=' "$deploy_directory/symlinks/.env" || echo "REVERB_HOST=127.0.0.1" | sudo -u "$username" tee -a "$deploy_directory/symlinks/.env" >/dev/null
-  grep -q '^REVERB_PORT=' "$deploy_directory/symlinks/.env" || echo "REVERB_PORT=$reverb_listen_port" | sudo -u "$username" tee -a "$deploy_directory/symlinks/.env" >/dev/null
   sudo -u "$username" bash -lc "cd $deploy_directory/current && php artisan reverb:install --no-interaction" || status "reverb:install skipped or failed (check composer package)"
-  sudo -u "$username" sed -i "s/^REVERB_HOST=.*/REVERB_HOST=127.0.0.1/" "$deploy_directory/symlinks/.env" 2>/dev/null || true
-  sudo -u "$username" sed -i "s/^REVERB_PORT=.*/REVERB_PORT=$reverb_listen_port/" "$deploy_directory/symlinks/.env" 2>/dev/null || true
+  configure_reverb_env
+
+  if [ -f "$deploy_directory/current/package.json" ] && [ -d "$deploy_directory/current/node_modules" ]; then
+    title "Rebuilding Front End Assets for Reverb"
+    sudo -u "$username" bash -lc "cd $deploy_directory/current && npm install && npm run build"
+  fi
 fi
+
+configure_typesense_env
 
 if [ -f $root_path/deploy/builders/$app_type/init_symlink_data.sh ]; then
   title "Creating Initial Symlinked Data"
@@ -243,22 +348,25 @@ if [ "$reverb_enabled" -eq 1 ] && [ -d "$deploy_directory/current/vendor/laravel
   reverb_conf_file="/etc/supervisor/conf.d/${username}_reverb.conf"
   if [ ! -f "$reverb_conf_file" ]; then
       sudo cp $root_path/deploy/_supervisor.conf "$reverb_conf_file"
-      sudo sed -i "s|program:|program:reverb_$username|" "$reverb_conf_file"
-      sudo sed -i "s|command=|command=php $deploy_directory/current/artisan reverb:start|" "$reverb_conf_file"
-      sudo sed -i "s|user=|user=$username|" "$reverb_conf_file"
-      sudo sed -i "s|stdout_logfile=|stdout_logfile=$deploy_directory/current/storage/logs/reverb.log|" "$reverb_conf_file"
       sudo supervisorctl reread
       sudo supervisorctl update
       status "Created: $reverb_conf_file"
   else
       status "Already exists: $reverb_conf_file"
   fi
+  sudo sed -i "s|program:.*|program:reverb_$username|" "$reverb_conf_file"
+  sudo sed -i "s|command=.*|command=php $deploy_directory/current/artisan reverb:start --host=127.0.0.1 --port=$reverb_listen_port|" "$reverb_conf_file"
+  sudo sed -i "s|user=.*|user=$username|" "$reverb_conf_file"
+  sudo sed -i "s|stdout_logfile=.*|stdout_logfile=$deploy_directory/current/storage/logs/reverb.log|" "$reverb_conf_file"
+  sudo supervisorctl reread >/dev/null 2>&1 || true
+  sudo supervisorctl update >/dev/null 2>&1 || true
+  sudo supervisorctl restart "reverb_$username" >/dev/null 2>&1 || true
 elif [ "$reverb_enabled" -eq 1 ]; then
   status "Reverb enabled in config.yml but laravel/reverb not in composer — add the package to the repo, deploy again, then re-run create_app or add the process manually."
 fi
 
 title "Typesense (server-wide)"
-status "Typesense is a system service (install via provision). Configure host/API key in .env for Scout or your client; no per-app supervisor entry."
+status "Typesense is a system service (install via provision). Connection variables are synced into each app .env when enabled in config.yml."
 
 # Return back to the original directory
 cd $initial_working_directory || exit
