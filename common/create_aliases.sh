@@ -29,6 +29,11 @@ do
 done
 
 if [ $need_to_resource -eq 1 ]; then
-  source ~/.bashrc
-  echo "To use the new aliases, you may need to run: source ~/.bashrc"
+  echo "To use the new aliases in this shell, run: source ~/.bash_aliases"
+fi
+
+# Loading into the current shell when this file is sourced (e.g. source common/create_aliases.sh)
+if [ -n "${BASH_VERSION:-}" ] && [ "${BASH_SOURCE[0]}" != "${0}" ] && [ -f ~/.bash_aliases ]; then
+  # shellcheck source=/dev/null
+  source ~/.bash_aliases
 fi

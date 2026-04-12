@@ -9,7 +9,14 @@ cd "$parent_path"
 source $parent_path/../common/helpers.sh
 
 title "Create devops shell aliases"
-bash "$parent_path/../common/create_aliases.sh"
+# If provision was started with sudo, aliases must go to the real login user (~/.bash_aliases), not root's.
+if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
+  sudo -H -u "$SUDO_USER" bash "$parent_path/../common/create_aliases.sh"
+elif [ "$(id -u)" -eq 0 ] && id ubuntu &>/dev/null; then
+  sudo -H -u ubuntu bash "$parent_path/../common/create_aliases.sh"
+else
+  bash "$parent_path/../common/create_aliases.sh"
+fi
 
 # Load the config file (yaml)
 source $parent_path/../common/parse_yaml.sh
