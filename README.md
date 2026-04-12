@@ -16,7 +16,7 @@ Here is a "how to" video for the CloudFormation deployment (released: April 19):
 2. If you have an existing server, then clone this repo into the Ubuntu server where the Laravel application will be hosted. Be sure to clone into a directory that is accessible by all users (e.g., `/usr/local/bin/devops`).
 
 ### Provisioning
-1. Update the server options in [`config.yml`](./config.yml) (PHP version, database root password, optional services such as Reverb / Typesense, `deploy.keep_releases`, and any additional node IPs in `servers`).
+1. Update the server options in [`config.yml`](./config.yml) (PHP version, database root password, optional services such as Reverb / Typesense, `deploy.keep_releases`, `installs.swapspace.max_size_in_mb`, and any additional node IPs in `servers`).
 2. Run the provisioning script once:
 
 ```bash

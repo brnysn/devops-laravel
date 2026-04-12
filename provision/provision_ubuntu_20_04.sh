@@ -52,17 +52,29 @@ python3-pip re2c supervisor unattended-upgrades whois vim cifs-utils bash-comple
 
 # Create Swap Space
 title "Create Swap Space"
-case $installs_swapspace in
+swapspace_install_value="${installs_swapspace_install:-${installs_swapspace:-no}}"
+swapspace_max_size_value="${installs_swapspace_max_size_in_mb:-null}"
+case $swapspace_install_value in
   [yY][eE][sS]|[yY])
     if [ -f /swapfile ]; then
       status "swapfile already exists"
     else
       total_ram=$(free -m | grep Mem: | awk '{print $2}')
-      sudo fallocate -l ${total_ram}M /swapfile
+      swap_size_mb="$total_ram"
+      case "${swapspace_max_size_value,,}" in
+        ''|null)
+          ;;
+        *)
+          if [[ "$swapspace_max_size_value" =~ ^[0-9]+$ ]] && [ "$swapspace_max_size_value" -gt 0 ] && [ "$swapspace_max_size_value" -lt "$swap_size_mb" ]; then
+            swap_size_mb="$swapspace_max_size_value"
+          fi
+          ;;
+      esac
+      sudo fallocate -l ${swap_size_mb}M /swapfile
       sudo chmod 600 /swapfile
       sudo mkswap /swapfile
       sudo swapon /swapfile
-      status "swapfile created"
+      status "swapfile created (${swap_size_mb}M)"
     fi;;
   *)
     status "not creating swap space";;

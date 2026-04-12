@@ -2,7 +2,10 @@ servers: 'none'
 deploy:
   keep_releases: 3
 installs:
-  swapspace: yes
+  swapspace:
+    install: yes
+    # Uses total RAM, capped at this value when set. Use null to allocate swap equal to total RAM.
+    max_size_in_mb: 1024
   nginx: yes
   php:
     install: yes
