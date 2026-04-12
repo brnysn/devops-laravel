@@ -21,6 +21,13 @@ cd "$my_path"
 # Load common
 source $my_path/../common/load_common.sh
 
+# Reverb (config.yml installs.reverb.install): port stable per username; nginx + .env + daemon when enabled
+reverb_enabled=0
+case "${installs_reverb_install:-}" in
+  [yY][eE][sS]|[yY]) reverb_enabled=1 ;;
+esac
+reverb_listen_port=$(( 9080 + $(printf '%s' "$username" | cksum | awk '{print $1 % 1000}') ))
+
 # Guard against overwriting and existing user
 title "Create Deployment User: $username"
 if id "$username" >/dev/null 2>&1; then
@@ -65,6 +72,11 @@ if [ ! -f $deploy_directory/symlinks/.env ]; then
   sed -i "s|DB_USERNAME=.*|DB_USERNAME=$username|" $deploy_directory/symlinks/.env
   sed -i "s|DB_PASSWORD=.*|DB_PASSWORD=$db_password|" $deploy_directory/symlinks/.env
   sed -i "s|HORIZON_PREFIX=.*|HORIZON_PREFIX=$username|" $deploy_directory/symlinks/.env
+  if [ "$reverb_enabled" -eq 1 ]; then
+    grep -q '^REVERB_HOST=' $deploy_directory/symlinks/.env || echo "REVERB_HOST=127.0.0.1" >> $deploy_directory/symlinks/.env
+    grep -q '^REVERB_PORT=' $deploy_directory/symlinks/.env || echo "REVERB_PORT=$reverb_listen_port" >> $deploy_directory/symlinks/.env
+    grep -q '^REVERB_SCHEME=' $deploy_directory/symlinks/.env || echo "REVERB_SCHEME=http" >> $deploy_directory/symlinks/.env
+  fi
 
   echo "Created .env file: $deploy_directory/symlinks/.env"
 else
@@ -75,7 +87,8 @@ EOF
   title "Next Steps"
   echo "1. Install the above deployment key into your Git repo."
   echo "2. Review the created .env ($deploy_directory/symlinks/.env) and make desired changes."
-  echo "3. Re run the following: appCreate $username"
+  echo "3. For Typesense: set .env if using Scout (server service from provision)."
+  echo "4. Re run the following: appCreate $username"
 
   exit
 fi
@@ -136,6 +149,17 @@ sudo -u $username $root_path/deploy/deploy.sh
 title "Generating Application Key"
 sudo -u $username php $deploy_directory/current/artisan key:generate
 
+if [ "$reverb_enabled" -eq 1 ] && [ -d "$deploy_directory/current/vendor/laravel/reverb" ]; then
+  title "Laravel Reverb (config + keys)"
+  sudo -u "$username" sed -i "s/^REVERB_HOST=.*/REVERB_HOST=127.0.0.1/" "$deploy_directory/symlinks/.env" 2>/dev/null || true
+  sudo -u "$username" sed -i "s/^REVERB_PORT=.*/REVERB_PORT=$reverb_listen_port/" "$deploy_directory/symlinks/.env" 2>/dev/null || true
+  grep -q '^REVERB_HOST=' "$deploy_directory/symlinks/.env" || echo "REVERB_HOST=127.0.0.1" | sudo -u "$username" tee -a "$deploy_directory/symlinks/.env" >/dev/null
+  grep -q '^REVERB_PORT=' "$deploy_directory/symlinks/.env" || echo "REVERB_PORT=$reverb_listen_port" | sudo -u "$username" tee -a "$deploy_directory/symlinks/.env" >/dev/null
+  sudo -u "$username" bash -lc "cd $deploy_directory/current && php artisan reverb:install --no-interaction" || status "reverb:install skipped or failed (check composer package)"
+  sudo -u "$username" sed -i "s/^REVERB_HOST=.*/REVERB_HOST=127.0.0.1/" "$deploy_directory/symlinks/.env" 2>/dev/null || true
+  sudo -u "$username" sed -i "s/^REVERB_PORT=.*/REVERB_PORT=$reverb_listen_port/" "$deploy_directory/symlinks/.env" 2>/dev/null || true
+fi
+
 if [ -f $root_path/deploy/builders/$app_type/init_symlink_data.sh ]; then
   title "Creating Initial Symlinked Data"
   sudo -u $username $root_path/deploy/builders/$app_type/init_symlink_data.sh
@@ -158,8 +182,15 @@ if [ ! -f /etc/nginx/sites-available/$username.conf ]; then
     sudo sed -i "s|listen \[::\]:PORT;|listen [::]:$app_port;|" /etc/nginx/sites-available/$username.conf
     sudo sed -i "s|root;|root $deploy_directory/current/public;|" /etc/nginx/sites-available/$username.conf
     sudo sed -i "s|phpXXXX|php$installs_php_version-$username|" /etc/nginx/sites-available/$username.conf
+    if [ "$reverb_enabled" -eq 1 ]; then
+      sudo sed -i "/#REVERB_BLOCK/r $root_path/deploy/_nginx_reverb.snippet" /etc/nginx/sites-available/$username.conf
+      sudo sed -i "s|REVERB_PROXY_PORT|$reverb_listen_port|g" /etc/nginx/sites-available/$username.conf
+      sudo sed -i '/#REVERB_BLOCK/d' /etc/nginx/sites-available/$username.conf
+    else
+      sudo sed -i '/#REVERB_BLOCK/d' /etc/nginx/sites-available/$username.conf
+    fi
     sudo ln -s /etc/nginx/sites-available/$username.conf /etc/nginx/sites-enabled/$username.conf
-    sudo service nginx reload
+    sudo nginx -t && sudo service nginx reload
     status "Created: /etc/nginx/sites-available/$username.conf"
 else
   status "Already exists: /etc/nginx/sites-available/$username.conf"
@@ -207,6 +238,27 @@ if [ ! -f "$pulse_conf_file" ]; then
 else
   status "Already exists: $pulse_conf_file"
 fi
+
+if [ "$reverb_enabled" -eq 1 ] && [ -d "$deploy_directory/current/vendor/laravel/reverb" ]; then
+  reverb_conf_file="/etc/supervisor/conf.d/${username}_reverb.conf"
+  if [ ! -f "$reverb_conf_file" ]; then
+      sudo cp $root_path/deploy/_supervisor.conf "$reverb_conf_file"
+      sudo sed -i "s|program:|program:reverb_$username|" "$reverb_conf_file"
+      sudo sed -i "s|command=|command=php $deploy_directory/current/artisan reverb:start|" "$reverb_conf_file"
+      sudo sed -i "s|user=|user=$username|" "$reverb_conf_file"
+      sudo sed -i "s|stdout_logfile=|stdout_logfile=$deploy_directory/current/storage/logs/reverb.log|" "$reverb_conf_file"
+      sudo supervisorctl reread
+      sudo supervisorctl update
+      status "Created: $reverb_conf_file"
+  else
+      status "Already exists: $reverb_conf_file"
+  fi
+elif [ "$reverb_enabled" -eq 1 ]; then
+  status "Reverb enabled in config.yml but laravel/reverb not in composer — add the package to the repo, deploy again, then re-run create_app or add the process manually."
+fi
+
+title "Typesense (server-wide)"
+status "Typesense is a system service (install via provision). Configure host/API key in .env for Scout or your client; no per-app supervisor entry."
 
 # Return back to the original directory
 cd $initial_working_directory || exit
