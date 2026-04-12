@@ -15,21 +15,31 @@ bash "$parent_path/../common/create_aliases.sh"
 source $parent_path/../common/parse_yaml.sh
 eval $(parse_yaml $parent_path/../config.yml)
 
-# Auto restart services
-title "Enabling Service Auto Restart"
-sudo sed -i 's/#$nrconf{restart} = '"'"'i'"'"';/$nrconf{restart} = '"'"'a'"'"';/g' /etc/needrestart/needrestart.conf
+# Non-interactive apt + needrestart (avoids "Newer kernel available" whiptail over SSH)
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+export UCF_FORCE_CONFFOLD=1
 
-# Update Package List
 title "Update Package List"
-sudo apt update
+sudo -E apt-get update -y
 
-# Update System Packages
+title "Configure needrestart (no kernel reboot dialog)"
+sudo -E apt-get install -y needrestart 2>/dev/null || true
+if [ -f /etc/needrestart/needrestart.conf ]; then
+  sudo sed -i "s/^#\$nrconf{restart} = 'i';/\$nrconf{restart} = 'a';/" /etc/needrestart/needrestart.conf
+  sudo sed -i "s/^\$nrconf{restart} = 'i';/\$nrconf{restart} = 'a';/" /etc/needrestart/needrestart.conf
+  sudo sed -i "s/^#\$nrconf{kernelhints} = 1/\$nrconf{kernelhints} = 0/" /etc/needrestart/needrestart.conf
+  sudo sed -i "s/^\$nrconf{kernelhints} = 1;/\$nrconf{kernelhints} = 0;/" /etc/needrestart/needrestart.conf
+  sudo sed -i "s/^#\$nrconf{ui} = 'i';/\$nrconf{ui} = 'a';/" /etc/needrestart/needrestart.conf
+  sudo sed -i "s/^\$nrconf{ui} = 'i';/\$nrconf{ui} = 'a';/" /etc/needrestart/needrestart.conf
+fi
+
 title "Upgrade Packages"
-sudo apt upgrade -y
+sudo -E apt-get upgrade -y
 
 # Install Some Basic Packages....TODO: FILTER THROUGH THESE
 title "Install Basic Packages"
-sudo apt-get install -y software-properties-common curl gnupg debian-keyring debian-archive-keyring apt-transport-https \
+sudo -E apt-get install -y software-properties-common curl gnupg debian-keyring debian-archive-keyring apt-transport-https \
 ca-certificates build-essential dos2unix gcc git git-lfs libmcrypt4 libpcre3-dev libpng-dev chrony make pv \
 python3-pip re2c supervisor unattended-upgrades whois vim cifs-utils bash-completion zsh zip unzip expect
 
@@ -209,12 +219,12 @@ esac
 
 # One last upgrade check
 title "One Last Upgrade Check"
-sudo apt upgrade -y
+sudo -E apt-get upgrade -y
 
 # Clean Up
 title "Clean Up"
-sudo apt -y autoremove
-sudo apt -y clean
+sudo -E apt-get -y autoremove
+sudo -E apt-get -y clean
 
 # Re-pin default `php` after final upgrade (parallel PHP installs may reset alternatives)
 case $installs_php_install in
