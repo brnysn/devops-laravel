@@ -206,9 +206,9 @@ if [ ! -f /etc/php/$installs_php_version/fpm/pool.d/$username.conf ]; then
     sudo sed -i "s/listen\.group.*/listen.group = $username/" /etc/php/$installs_php_version/fpm/pool.d/$username.conf
     sudo sed -i "s|listen =.*|listen = /run/php/php$installs_php_version-$username-fpm.sock|" /etc/php/$installs_php_version/fpm/pool.d/$username.conf
     sudo service php$installs_php_version-fpm restart
-    status "Created: /etc/php/$installs_php_version/fpm/pool.d/$username"
+    status "Created: /etc/php/$installs_php_version/fpm/pool.d/$username.conf"
 else
-  status "Already existsL /etc/php/$installs_php_version/fpm/pool.d/$username.conf"
+  status "Already exists: /etc/php/$installs_php_version/fpm/pool.d/$username.conf"
 fi
 
 # Create supervisor conf

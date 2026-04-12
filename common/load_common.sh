@@ -11,8 +11,16 @@ source $common_path/helpers.sh
 source $common_path/parse_yaml.sh
 eval $(parse_yaml $root_path/config.yml)
 
-IFS=","
-read -ra servers <<< "$servers"
+servers_csv="${servers:-}"
+servers=()
+servers_csv="${servers_csv// /}"
+case "${servers_csv,,}" in
+  ""|none|off|no|false)
+    ;;
+  *)
+    IFS="," read -r -a servers <<< "$servers_csv"
+    ;;
+esac
 
 
 # Load the application config file

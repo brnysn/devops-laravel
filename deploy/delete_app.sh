@@ -28,8 +28,10 @@ status "User: $app_name"
 status "MySQL User: $app_name"
 status "MySQL Database: $app_name"
 status "Nginx Configuration: /etc/nginx/sites-available/$app_name.conf"
-status "PHP FPM Pool: /etc/php/$php_version/fpm/pool.d/$app_name.conf"
+status "PHP FPM Pool: /etc/php/$installs_php_version/fpm/pool.d/$app_name.conf"
 status "Supervisor Conf: /etc/supervisor/conf.d/$app_name.conf"
+status "Pulse Supervisor Conf: /etc/supervisor/conf.d/${app_name}_pulse.conf"
+status "Reverb Supervisor Conf: /etc/supervisor/conf.d/${app_name}_reverb.conf"
 status "App Config: $root_path/apps/$app_name.sh"
 read -p "Are you sure you continue? " response
 echo    # (optional) move to a new line
@@ -38,12 +40,12 @@ then
 
   title "Nginx Configuration: /etc/nginx/sites-available/$app_name.conf"
   restart_nginx=0
-  if [ -f /etc/nginx/sites-enabled/$username.conf ]; then
-    sudo rm /etc/nginx/sites-enabled/$username.conf
-    status "Deleted: /etc/nginx/sites-enabled/$username.conf"
+  if [ -f /etc/nginx/sites-enabled/$app_name.conf ]; then
+    sudo rm /etc/nginx/sites-enabled/$app_name.conf
+    status "Deleted: /etc/nginx/sites-enabled/$app_name.conf"
     restart_nginx=1
   else
-    status "Does not exists: /etc/nginx/sites-enabled/$username.conf"
+    status "Does not exists: /etc/nginx/sites-enabled/$app_name.conf"
   fi
   if [ -f /etc/nginx/sites-available/$app_name.conf ]; then
     sudo rm /etc/nginx/sites-available/$app_name.conf
@@ -58,32 +60,53 @@ then
   fi
 
 
-  title "PHP FPM Pool: /etc/php/$php_version/fpm/pool.d/$app_name.conf"
-  if [ -f /etc/php/$php_version/fpm/pool.d/$app_name.conf ]; then
-    sudo rm /etc/php/$php_version/fpm/pool.d/$app_name.conf
-    status "Deleted: /etc/php/$php_version/fpm/pool.d/$app"
-    sudo service php$php_version-fpm restart
+  title "PHP FPM Pool: /etc/php/$installs_php_version/fpm/pool.d/$app_name.conf"
+  if [ -f /etc/php/$installs_php_version/fpm/pool.d/$app_name.conf ]; then
+    sudo rm /etc/php/$installs_php_version/fpm/pool.d/$app_name.conf
+    status "Deleted: /etc/php/$installs_php_version/fpm/pool.d/$app_name.conf"
+    sudo service php$installs_php_version-fpm restart
     status "PHP FPM reloaded"
   else
-    status "Does not exists: /etc/php/$php_version/fpm/pool.d/$app_name.conf"
+    status "Does not exists: /etc/php/$installs_php_version/fpm/pool.d/$app_name.conf"
   fi
 
 
-  title "Supervisor Conf: /etc/supervisor/conf.d/$username.conf"
-  if [ -f /etc/supervisor/conf.d/$username.conf ]; then
-    sudo rm /etc/supervisor/conf.d/$username.conf
-    status "Deleted: /etc/supervisor/conf.d/$username.conf"
+  title "Supervisor Conf: /etc/supervisor/conf.d/$app_name.conf"
+  supervisor_updated=0
+  if [ -f /etc/supervisor/conf.d/$app_name.conf ]; then
+    sudo rm /etc/supervisor/conf.d/$app_name.conf
+    status "Deleted: /etc/supervisor/conf.d/$app_name.conf"
+    supervisor_updated=1
+  else
+    status "Does not exists: /etc/supervisor/conf.d/$app_name.conf"
+  fi
+  if [ -f /etc/supervisor/conf.d/${app_name}_pulse.conf ]; then
+    sudo rm /etc/supervisor/conf.d/${app_name}_pulse.conf
+    status "Deleted: /etc/supervisor/conf.d/${app_name}_pulse.conf"
+    supervisor_updated=1
+  else
+    status "Does not exists: /etc/supervisor/conf.d/${app_name}_pulse.conf"
+  fi
+  if [ -f /etc/supervisor/conf.d/${app_name}_reverb.conf ]; then
+    sudo rm /etc/supervisor/conf.d/${app_name}_reverb.conf
+    status "Deleted: /etc/supervisor/conf.d/${app_name}_reverb.conf"
+    supervisor_updated=1
+  else
+    status "Does not exists: /etc/supervisor/conf.d/${app_name}_reverb.conf"
+  fi
+  if [ $supervisor_updated -eq 1 ]; then
     sudo supervisorctl reread
     sudo supervisorctl update
     status "Supervisor reloaded"
   else
-    status "Does not exists: /etc/supervisor/conf.d/$username.conf"
+    status "No supervisor configs found for $app_name"
   fi
 
 
   title "Deleting Application Cron"
-  cron_expression="* * * * * cd $deploy_directory/current/ && php artisan schedule:run >> $deploy_directory/current/storage/logs/cron.log 2>&1"
-  if [ $(sudo -u $username crontab -l | wc -c) -eq 0 ]; then
+  if ! id "$app_name" >/dev/null 2>&1; then
+    status "User $app_name does not exist; skipping crontab removal"
+  elif [ $(sudo -u $app_name crontab -l 2>/dev/null | wc -c) -eq 0 ]; then
     status "Crontab does not exist"
   else
     sudo -u $app_name crontab -r
@@ -100,15 +123,15 @@ then
   fi
 
   title "Dropping $app_name user and $app_name database from MySQL"
-  mysql -u root -p$db_root_password <<SQL
+  mysql -u root -p$installs_database_root_password <<SQL
 DROP DATABASE IF EXISTS $app_name;
-DROP USER IF EXISTS '$username'@'localhost';
+DROP USER IF EXISTS '$app_name'@'localhost';
 FLUSH PRIVILEGES;
 SQL
   status "Dropped $app_name user and $app_name database from MySQL"
 
   title "Deleting User and All Files user=$app_name"
-  if id "$username" >/dev/null 2>&1; then
+  if id "$app_name" >/dev/null 2>&1; then
     sudo deluser $app_name --remove-all-files
     status "User $app_name has been deleted."
   else

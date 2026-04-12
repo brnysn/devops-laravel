@@ -13,12 +13,17 @@ Here is a "how to" video for the CloudFormation deployment (released: April 19):
 
 [![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/7xOpxpdLcfI/0.jpg)](https://www.youtube.com/watch?v=7xOpxpdLcfI)
 
-2. If you have an existing server, then clone this repo into the Ubuntu server where the Laravel application will be hosted. Be sure to clone into a directory that is accessible by all users (e.g., /usr/local/bin/deploy )
+2. If you have an existing server, then clone this repo into the Ubuntu server where the Laravel application will be hosted. Be sure to clone into a directory that is accessible by all users (e.g., `/usr/local/bin/devops`).
 
 ### Provisioning
-1. First update the `db_root_password` and `php_version` in the `./config.sh` file
-2. Update the `./provision/provision_ubuntu_20_04.sh` script to include the packages you want by uncommenting the code
-3. Run the `./provision/provision_ubuntu_20_04.sh` script
+1. Update the server options in [`config.yml`](./config.yml) (PHP version, database root password, optional services, and any additional node IPs in `servers`).
+2. Run the provisioning script once:
+
+```bash
+sudo bash ./provision/provision_ubuntu_20_04.sh
+```
+
+Use `servers: 'none'` for a single-node server, or provide a comma-separated list of private node IPs for archive-based multi-node deployments.
 
 Here is a "how to" video for the provisioning (released: April 23):
 

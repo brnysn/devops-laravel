@@ -131,10 +131,14 @@ case $installs_typesense_install in
     status "not installing typesense";;
 esac
 
-if [ $sqlite -eq 1 ]; then
-  title "Install SQLite"
-  source ./installers/sqlite.sh
-fi
+title "Install SQLite"
+case $installs_sqlite in
+  [yY][eE][sS]|[yY])
+    source ./installers/sqlite.sh
+    status "sqlite installed";;
+  *)
+    status "not installing sqlite";;
+esac
 
 title "Install MySQL"
 case $installs_database_mysql in
@@ -207,7 +211,7 @@ case $installs_mailhog in
 esac
 
 title "Install ngrok"
-case $installs_mailhog in
+case $installs_ngrok in
   [yY][eE][sS]|[yY])
   source ./installers/ngrok.sh
   status "ngrok installed";;
@@ -314,6 +318,5 @@ status "Swap Space: $(swapon --show 2>/dev/null || echo none)"
 
 # Return back to the original directory
 cd $initial_working_directory
-
 
 

@@ -17,18 +17,16 @@ title "Deploying to other servers"
 # So we need to use the scp/ssh commands with ubuntu user sessions....not ideal
 # This also assumes that the deployment user is the same on all nodes
 #
-status "servers: $servers"
-if [ -n "$servers" ]; then
+status "servers: ${servers_csv:-none}"
+if [ ${#servers[@]} -gt 0 ]; then
   for i in "${!servers[@]}"; do
-    echo "inside the for loop: ${servers[$i]}"
     if [ -f $deploy_directory/build*.zip ]; then
-      echo "inside the if block"
       # copy the build to the other server
       scp -i ~/.ssh/laravel_demo.pem $deploy_directory/build*.zip  ubuntu@${servers[$i]}:/home/ubuntu
       # move the zip file to the deployment user (assumes same username)
       # chown to set the owner of the zip to the deployment user
       # run the deployment script on the other node
-      ssh -i ~/.ssh/laravel_demo.pem ubuntu@"${servers[$1]}" <<ENDSSH
+      ssh -i ~/.ssh/laravel_demo.pem ubuntu@"${servers[$i]}" <<ENDSSH
         sudo mv /home/ubuntu/build*.zip /home/$username/deployments
         sudo chown -R $username:$username /home/$username/deployments
         sudo -u $username /usr/local/bin/devops/deploy/deploy.sh

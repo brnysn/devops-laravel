@@ -1,4 +1,4 @@
-servers: '10.0.1.256,10.0.2.256'
+servers: 'none'
 installs:
   swapspace: yes
   nginx: yes
