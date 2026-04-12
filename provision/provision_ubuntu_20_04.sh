@@ -8,6 +8,9 @@ cd "$parent_path"
 # Load the helpers
 source $parent_path/../common/helpers.sh
 
+title "Create devops shell aliases"
+bash "$parent_path/../common/create_aliases.sh"
+
 # Load the config file (yaml)
 source $parent_path/../common/parse_yaml.sh
 eval $(parse_yaml $parent_path/../config.yml)

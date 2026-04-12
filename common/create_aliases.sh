@@ -9,6 +9,12 @@ declare -a aliases=(
 "alias appNew='/usr/local/bin/devops/deploy/new_app_form.sh'"
 "alias appCreate='/usr/local/bin/devops/deploy/create_app.sh'"
 "alias appDelete='/usr/local/bin/devops/deploy/delete_app.sh'"
+"alias art='php artisan'"
+"alias dumpa='composer dumpa && art optimize:clear'"
+"alias migrate='art migrate'"
+"alias mf='art migrate:fresh'"
+"alias mfs='art migrate:fresh --seed'"
+"alias tinker='art optimize:clear && art tinker'"
                 )
 need_to_resource=0
 for alias_str in "${aliases[@]}"
