@@ -343,19 +343,30 @@ else
   status "Already exists: /etc/php/$installs_php_version/fpm/pool.d/$username.conf"
 fi
 
-# Create supervisor conf
-title "Creating Supervisor Conf"
+# Create supervisor conf (Horizon if installed, else queue:work)
+title "Creating Supervisor Conf (queue worker)"
+if [ -d "$deploy_directory/current/vendor/laravel/horizon" ]; then
+  queue_supervisor_name="horizon_$username"
+  queue_command="php $deploy_directory/current/artisan horizon"
+  queue_log_name="horizon.log"
+  status "Queue runner: Laravel Horizon"
+else
+  queue_supervisor_name="queue_$username"
+  queue_command="php $deploy_directory/current/artisan queue:work --sleep=3 --tries=3 --max-time=3600"
+  queue_log_name="queue-worker.log"
+  status "Queue runner: artisan queue:work (Horizon not in vendor)"
+fi
 if [ ! -f /etc/supervisor/conf.d/$username.conf ]; then
     sudo cp $root_path/deploy/_supervisor.conf /etc/supervisor/conf.d/$username.conf
-    sudo sed -i "s|program:|program:horizon_$username|" /etc/supervisor/conf.d/$username.conf
-    sudo sed -i "s|command=|command=php $deploy_directory/current/artisan horizon|" /etc/supervisor/conf.d/$username.conf
+    sudo sed -i "s|program:|program:${queue_supervisor_name}|" /etc/supervisor/conf.d/$username.conf
+    sudo sed -i "s|command=|command=${queue_command}|" /etc/supervisor/conf.d/$username.conf
     sudo sed -i "s|user=|user=$username|" /etc/supervisor/conf.d/$username.conf
-    sudo sed -i "s|stdout_logfile=|stdout_logfile=$deploy_directory/current/storage/logs/horizon.log|" /etc/supervisor/conf.d/$username.conf
+    sudo sed -i "s|stdout_logfile=|stdout_logfile=$deploy_directory/current/storage/logs/${queue_log_name}|" /etc/supervisor/conf.d/$username.conf
     sudo supervisorctl reread
     sudo supervisorctl update
-    status "Created: /etc/supervisor/conf.d/$username.conf"
+    status "Created: /etc/supervisor/conf.d/$username.conf ($queue_supervisor_name)"
 else
-  status "Already exists: /etc/supervisor/conf.d/$username.conf"
+  status "Already exists: /etc/supervisor/conf.d/$username.conf (edit manually if switching Horizon ↔ queue:work)"
 fi
 pulse_conf_file="/etc/supervisor/conf.d/${username}_pulse.conf"
 if [ ! -f "$pulse_conf_file" ]; then
