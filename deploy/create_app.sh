@@ -441,18 +441,17 @@ if [ "$reverb_enabled" -eq 1 ] && [ "$reverb_installed" -eq 1 ]; then
   reverb_conf_file="/etc/supervisor/conf.d/${username}_reverb.conf"
   if [ ! -f "$reverb_conf_file" ]; then
       sudo cp $root_path/deploy/_supervisor.conf "$reverb_conf_file"
-      sudo supervisorctl reread
-      sudo supervisorctl update
       status "Created: $reverb_conf_file"
   else
       status "Already exists: $reverb_conf_file"
   fi
-  sudo sed -i "s|program:.*|program:reverb_$username|" "$reverb_conf_file"
-  sudo sed -i "s|command=.*|command=php $APP_LARAVEL_ROOT/artisan reverb:start --host=127.0.0.1 --port=$reverb_listen_port|" "$reverb_conf_file"
-  sudo sed -i "s|user=.*|user=$username|" "$reverb_conf_file"
-  sudo sed -i "s|stdout_logfile=.*|stdout_logfile=$APP_LARAVEL_ROOT/storage/logs/reverb.log|" "$reverb_conf_file"
-  sudo supervisorctl reread >/dev/null 2>&1 || true
-  sudo supervisorctl update >/dev/null 2>&1 || true
+  # Fill template before reread (empty user= / [program:] breaks supervisorctl)
+  sudo sed -i "s|program:|program:reverb_$username|" "$reverb_conf_file"
+  sudo sed -i "s|command=|command=php $APP_LARAVEL_ROOT/artisan reverb:start --host=127.0.0.1 --port=$reverb_listen_port|" "$reverb_conf_file"
+  sudo sed -i "s|user=|user=$username|" "$reverb_conf_file"
+  sudo sed -i "s|stdout_logfile=|stdout_logfile=$APP_LARAVEL_ROOT/storage/logs/reverb.log|" "$reverb_conf_file"
+  sudo supervisorctl reread
+  sudo supervisorctl update
   sudo supervisorctl restart "reverb_$username" >/dev/null 2>&1 || true
 elif [ "$reverb_enabled" -eq 1 ] && [ "$reverb_declared" -eq 1 ]; then
   status "Reverb is declared in composer.json but not installed in vendor. Check composer install output, composer.lock constraints, and Laravel version compatibility, then deploy again."
