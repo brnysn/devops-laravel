@@ -39,6 +39,10 @@ typesense_port="${installs_typesense_api_port:-8108}"
 typesense_protocol="${installs_typesense_protocol:-http}"
 env_file="$deploy_directory/symlinks/.env"
 
+# Real Laravel root (composer.json directory). Defaults to deploy_directory/current; search if nested.
+APP_LARAVEL_ROOT="$deploy_directory/current"
+COMPOSER_JSON_PATH="$APP_LARAVEL_ROOT/composer.json"
+
 upsert_env_value() {
   local file="$1"
   local key="$2"
@@ -134,20 +138,47 @@ configure_reverb_env() {
   chown "$username:$username" "$env_file"
 }
 
+resolve_app_laravel_root() {
+  APP_LARAVEL_ROOT="$deploy_directory/current"
+  COMPOSER_JSON_PATH="$APP_LARAVEL_ROOT/composer.json"
+
+  if [ -f "$COMPOSER_JSON_PATH" ]; then
+    status "Laravel root: $APP_LARAVEL_ROOT"
+    return 0
+  fi
+
+  local found=""
+  while IFS= read -r -d '' candidate; do
+    if grep -q 'laravel/framework' "$candidate" 2>/dev/null; then
+      found="$candidate"
+      break
+    fi
+  done < <(find "$deploy_directory/current" -maxdepth 5 -name composer.json -type f -print0 2>/dev/null)
+
+  if [ -n "$found" ]; then
+    COMPOSER_JSON_PATH="$found"
+    APP_LARAVEL_ROOT=$(dirname "$found")
+    status "Laravel root (nested): $APP_LARAVEL_ROOT"
+    return 0
+  fi
+
+  status "Warning: could not find composer.json under $deploy_directory/current; using $APP_LARAVEL_ROOT"
+}
+
 reverb_declared_in_composer() {
-  [ -f "$deploy_directory/current/composer.json" ] && grep -q '"laravel/reverb"' "$deploy_directory/current/composer.json"
+  [ -f "$COMPOSER_JSON_PATH" ] && grep -qiF 'laravel/reverb' "$COMPOSER_JSON_PATH"
 }
 
 reverb_declared_in_lock() {
-  [ -f "$deploy_directory/current/composer.lock" ] && grep -q '"name": "laravel/reverb"' "$deploy_directory/current/composer.lock"
+  [ -f "$APP_LARAVEL_ROOT/composer.lock" ] && grep -qiF 'laravel/reverb' "$APP_LARAVEL_ROOT/composer.lock"
 }
 
 reverb_command_available() {
-  sudo -u "$username" bash -lc "cd $deploy_directory/current && php artisan list --raw 2>/dev/null | grep -qx 'reverb:start'"
+  sudo -u "$username" bash -lc "cd \"$APP_LARAVEL_ROOT\" && php artisan list --raw 2>/dev/null | awk '{print \$1}' | grep -qx 'reverb:start'"
 }
 
 reverb_installed_for_app() {
-  if [ -d "$deploy_directory/current/vendor/laravel/reverb" ]; then
+  if [ -d "$APP_LARAVEL_ROOT/vendor/laravel/reverb" ]; then
     return 0
   fi
 
@@ -155,11 +186,11 @@ reverb_installed_for_app() {
     return 0
   fi
 
-  if [ ! -f "$deploy_directory/current/composer.json" ]; then
+  if [ ! -f "$COMPOSER_JSON_PATH" ]; then
     return 1
   fi
 
-  sudo -u "$username" bash -lc "cd $deploy_directory/current && composer show laravel/reverb --no-interaction >/dev/null 2>&1"
+  sudo -u "$username" bash -lc "cd \"$APP_LARAVEL_ROOT\" && composer show laravel/reverb --no-interaction >/dev/null 2>&1"
 }
 
 reverb_declared=0
@@ -283,8 +314,11 @@ if ! sudo -u $username $root_path/deploy/deploy.sh; then
   exit 1
 fi
 
+title "Locate Laravel application root"
+resolve_app_laravel_root
+
 title "Generating Application Key"
-sudo -u $username php $deploy_directory/current/artisan key:generate
+sudo -u $username php "$APP_LARAVEL_ROOT/artisan" key:generate
 
 if [ "$reverb_enabled" -eq 1 ]; then
   if reverb_declared_in_composer || reverb_declared_in_lock; then
@@ -298,12 +332,12 @@ fi
 
 if [ "$reverb_enabled" -eq 1 ] && [ "$reverb_installed" -eq 1 ]; then
   title "Laravel Reverb (config + keys)"
-  sudo -u "$username" bash -lc "cd $deploy_directory/current && php artisan reverb:install --no-interaction" || status "reverb:install skipped or failed (check composer package)"
+  sudo -u "$username" bash -lc "cd \"$APP_LARAVEL_ROOT\" && php artisan reverb:install --no-interaction" || status "reverb:install skipped or failed (check composer package)"
   configure_reverb_env
 
-  if [ -f "$deploy_directory/current/package.json" ] && [ -d "$deploy_directory/current/node_modules" ]; then
+  if [ -f "$APP_LARAVEL_ROOT/package.json" ] && [ -d "$APP_LARAVEL_ROOT/node_modules" ]; then
     title "Rebuilding Front End Assets for Reverb"
-    sudo -u "$username" bash -lc "cd $deploy_directory/current && npm install && npm run build"
+    sudo -u "$username" bash -lc "cd \"$APP_LARAVEL_ROOT\" && npm install && npm run build"
   fi
 fi
 
@@ -315,7 +349,7 @@ if [ -f $root_path/deploy/builders/$app_type/init_symlink_data.sh ]; then
 fi
 
 title "Creating Crontab for User: $username"
-cron_expression="* * * * * cd $deploy_directory/current/ && php artisan schedule:run >> $deploy_directory/current/storage/logs/cron.log 2>&1"
+cron_expression="* * * * * cd $APP_LARAVEL_ROOT/ && php artisan schedule:run >> $APP_LARAVEL_ROOT/storage/logs/cron.log 2>&1"
 if [ $(sudo -u $username crontab -l | wc -c) -eq 0 ]; then
   sudo -u $username echo "$cron_expression" | sudo crontab -u $username -
   status "Created crontab: $cron_expression"
@@ -329,7 +363,7 @@ if [ ! -f /etc/nginx/sites-available/$username.conf ]; then
     sudo cp $root_path/deploy/_nginx.conf /etc/nginx/sites-available/$username.conf
     sudo sed -i "s|listen PORT;|listen $app_port;|" /etc/nginx/sites-available/$username.conf
     sudo sed -i "s|listen \[::\]:PORT;|listen [::]:$app_port;|" /etc/nginx/sites-available/$username.conf
-    sudo sed -i "s|root;|root $deploy_directory/current/public;|" /etc/nginx/sites-available/$username.conf
+    sudo sed -i "s|root;|root $APP_LARAVEL_ROOT/public;|" /etc/nginx/sites-available/$username.conf
     sudo sed -i "s|phpXXXX|php$installs_php_version-$username|" /etc/nginx/sites-available/$username.conf
     if [ "$reverb_enabled" -eq 1 ]; then
       sudo sed -i "/#REVERB_BLOCK/r $root_path/deploy/_nginx_reverb.snippet" /etc/nginx/sites-available/$username.conf
@@ -362,14 +396,14 @@ fi
 
 # Create supervisor conf (Horizon if installed, else queue:work)
 title "Creating Supervisor Conf (queue worker)"
-if [ -d "$deploy_directory/current/vendor/laravel/horizon" ]; then
+if [ -d "$APP_LARAVEL_ROOT/vendor/laravel/horizon" ]; then
   queue_supervisor_name="horizon_$username"
-  queue_command="php $deploy_directory/current/artisan horizon"
+  queue_command="php $APP_LARAVEL_ROOT/artisan horizon"
   queue_log_name="horizon.log"
   status "Queue runner: Laravel Horizon"
 else
   queue_supervisor_name="queue_$username"
-  queue_command="php $deploy_directory/current/artisan queue:work --sleep=3 --tries=3 --max-time=3600"
+  queue_command="php $APP_LARAVEL_ROOT/artisan queue:work --sleep=3 --tries=3 --max-time=3600"
   queue_log_name="queue-worker.log"
   status "Queue runner: artisan queue:work (Horizon not in vendor)"
 fi
@@ -378,21 +412,21 @@ if [ ! -f /etc/supervisor/conf.d/$username.conf ]; then
     sudo sed -i "s|program:|program:${queue_supervisor_name}|" /etc/supervisor/conf.d/$username.conf
     sudo sed -i "s|command=|command=${queue_command}|" /etc/supervisor/conf.d/$username.conf
     sudo sed -i "s|user=|user=$username|" /etc/supervisor/conf.d/$username.conf
-    sudo sed -i "s|stdout_logfile=|stdout_logfile=$deploy_directory/current/storage/logs/${queue_log_name}|" /etc/supervisor/conf.d/$username.conf
+    sudo sed -i "s|stdout_logfile=|stdout_logfile=$APP_LARAVEL_ROOT/storage/logs/${queue_log_name}|" /etc/supervisor/conf.d/$username.conf
     sudo supervisorctl reread
     sudo supervisorctl update
     status "Created: /etc/supervisor/conf.d/$username.conf ($queue_supervisor_name)"
 else
   status "Already exists: /etc/supervisor/conf.d/$username.conf (edit manually if switching Horizon ↔ queue:work)"
 fi
-if [ -d "$deploy_directory/current/vendor/laravel/pulse" ]; then
+if [ -d "$APP_LARAVEL_ROOT/vendor/laravel/pulse" ]; then
   pulse_conf_file="/etc/supervisor/conf.d/${username}_pulse.conf"
   if [ ! -f "$pulse_conf_file" ]; then
       sudo cp $root_path/deploy/_supervisor.conf "$pulse_conf_file"
       sudo sed -i "s|program:|program:pulse_$username|" "$pulse_conf_file"
-      sudo sed -i "s|command=|command=php $deploy_directory/current/artisan pulse:check|" "$pulse_conf_file"
+      sudo sed -i "s|command=|command=php $APP_LARAVEL_ROOT/artisan pulse:check|" "$pulse_conf_file"
       sudo sed -i "s|user=|user=$username|" "$pulse_conf_file"
-      sudo sed -i "s|stdout_logfile=|stdout_logfile=$deploy_directory/current/storage/logs/pulse.log|" "$pulse_conf_file"
+      sudo sed -i "s|stdout_logfile=|stdout_logfile=$APP_LARAVEL_ROOT/storage/logs/pulse.log|" "$pulse_conf_file"
       sudo supervisorctl reread
       sudo supervisorctl update
       status "Created: $pulse_conf_file"
@@ -414,9 +448,9 @@ if [ "$reverb_enabled" -eq 1 ] && [ "$reverb_installed" -eq 1 ]; then
       status "Already exists: $reverb_conf_file"
   fi
   sudo sed -i "s|program:.*|program:reverb_$username|" "$reverb_conf_file"
-  sudo sed -i "s|command=.*|command=php $deploy_directory/current/artisan reverb:start --host=127.0.0.1 --port=$reverb_listen_port|" "$reverb_conf_file"
+  sudo sed -i "s|command=.*|command=php $APP_LARAVEL_ROOT/artisan reverb:start --host=127.0.0.1 --port=$reverb_listen_port|" "$reverb_conf_file"
   sudo sed -i "s|user=.*|user=$username|" "$reverb_conf_file"
-  sudo sed -i "s|stdout_logfile=.*|stdout_logfile=$deploy_directory/current/storage/logs/reverb.log|" "$reverb_conf_file"
+  sudo sed -i "s|stdout_logfile=.*|stdout_logfile=$APP_LARAVEL_ROOT/storage/logs/reverb.log|" "$reverb_conf_file"
   sudo supervisorctl reread >/dev/null 2>&1 || true
   sudo supervisorctl update >/dev/null 2>&1 || true
   sudo supervisorctl restart "reverb_$username" >/dev/null 2>&1 || true

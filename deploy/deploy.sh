@@ -174,16 +174,33 @@ fi
 status "  Linking: $deploy_directory/releases/$foldername"
 ln -sf $deploy_directory/releases/$foldername $deploy_directory/current
 
+laravel_root="$deploy_directory/current"
+if [ ! -f "$laravel_root/composer.json" ]; then
+  found=""
+  while IFS= read -r -d '' candidate; do
+    if grep -q 'laravel/framework' "$candidate" 2>/dev/null; then
+      found="$candidate"
+      break
+    fi
+  done < <(find "$deploy_directory/current" -maxdepth 5 -name composer.json -type f -print0 2>/dev/null)
+  if [ -n "$found" ]; then
+    laravel_root=$(dirname "$found")
+    status "Laravel root (nested): $laravel_root"
+  else
+    status "Warning: composer.json not found under $deploy_directory/current; using default root for artisan signals"
+  fi
+fi
+
 title "Refreshing Long-Running Processes"
-if [ -d "$deploy_directory/current/vendor/laravel/horizon" ]; then
-  php artisan horizon:terminate >/dev/null 2>&1 || status "Could not signal Horizon restart"
+if [ -d "$laravel_root/vendor/laravel/horizon" ]; then
+  php "$laravel_root/artisan" horizon:terminate >/dev/null 2>&1 || status "Could not signal Horizon restart"
   status "Signaled Horizon to restart on the new release"
 else
-  php artisan queue:restart >/dev/null 2>&1 || status "Could not signal queue workers to restart"
+  php "$laravel_root/artisan" queue:restart >/dev/null 2>&1 || status "Could not signal queue workers to restart"
   status "Signaled queue workers to restart on the new release"
 fi
-if [ -d "$deploy_directory/current/vendor/laravel/reverb" ]; then
-  php artisan reverb:restart >/dev/null 2>&1 || status "Could not signal Reverb restart"
+if [ -d "$laravel_root/vendor/laravel/reverb" ]; then
+  php "$laravel_root/artisan" reverb:restart >/dev/null 2>&1 || status "Could not signal Reverb restart"
   status "Signaled Reverb to restart on the new release"
 fi
 
