@@ -138,7 +138,23 @@ reverb_declared_in_composer() {
   [ -f "$deploy_directory/current/composer.json" ] && grep -q '"laravel/reverb"' "$deploy_directory/current/composer.json"
 }
 
+reverb_declared_in_lock() {
+  [ -f "$deploy_directory/current/composer.lock" ] && grep -q '"name": "laravel/reverb"' "$deploy_directory/current/composer.lock"
+}
+
+reverb_command_available() {
+  sudo -u "$username" bash -lc "cd $deploy_directory/current && php artisan list --raw 2>/dev/null | grep -qx 'reverb:start'"
+}
+
 reverb_installed_for_app() {
+  if [ -d "$deploy_directory/current/vendor/laravel/reverb" ]; then
+    return 0
+  fi
+
+  if reverb_command_available; then
+    return 0
+  fi
+
   if [ ! -f "$deploy_directory/current/composer.json" ]; then
     return 1
   fi
@@ -271,11 +287,12 @@ title "Generating Application Key"
 sudo -u $username php $deploy_directory/current/artisan key:generate
 
 if [ "$reverb_enabled" -eq 1 ]; then
-  if reverb_declared_in_composer; then
+  if reverb_declared_in_composer || reverb_declared_in_lock; then
     reverb_declared=1
   fi
   if reverb_installed_for_app; then
     reverb_installed=1
+    reverb_declared=1
   fi
 fi
 

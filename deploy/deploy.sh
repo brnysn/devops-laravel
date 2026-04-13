@@ -174,6 +174,19 @@ fi
 status "  Linking: $deploy_directory/releases/$foldername"
 ln -sf $deploy_directory/releases/$foldername $deploy_directory/current
 
+title "Refreshing Long-Running Processes"
+if [ -d "$deploy_directory/current/vendor/laravel/horizon" ]; then
+  php artisan horizon:terminate >/dev/null 2>&1 || status "Could not signal Horizon restart"
+  status "Signaled Horizon to restart on the new release"
+else
+  php artisan queue:restart >/dev/null 2>&1 || status "Could not signal queue workers to restart"
+  status "Signaled queue workers to restart on the new release"
+fi
+if [ -d "$deploy_directory/current/vendor/laravel/reverb" ]; then
+  php artisan reverb:restart >/dev/null 2>&1 || status "Could not signal Reverb restart"
+  status "Signaled Reverb to restart on the new release"
+fi
+
 # Cleanup Old Deployments
 cleanup_old_deployments "$keep_releases" "Post-Deploy Cleanup"
 
