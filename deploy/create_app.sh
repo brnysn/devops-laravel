@@ -445,11 +445,12 @@ if [ "$reverb_enabled" -eq 1 ] && [ "$reverb_installed" -eq 1 ]; then
   else
       status "Already exists: $reverb_conf_file"
   fi
-  # Fill template before reread (empty user= / [program:] breaks supervisorctl)
-  sudo sed -i "s|program:|program:reverb_$username|" "$reverb_conf_file"
-  sudo sed -i "s|command=|command=php $APP_LARAVEL_ROOT/artisan reverb:start --host=127.0.0.1 --port=$reverb_listen_port|" "$reverb_conf_file"
-  sudo sed -i "s|user=|user=$username|" "$reverb_conf_file"
-  sudo sed -i "s|stdout_logfile=|stdout_logfile=$APP_LARAVEL_ROOT/storage/logs/reverb.log|" "$reverb_conf_file"
+  # Fill template before reread. Use line-anchored / full-line subs so re-running
+  # create_app does not double the program name (program: matches inside reverb_$username).
+  sudo sed -i "1s|^\[program:.*\]|[program:reverb_$username]|" "$reverb_conf_file"
+  sudo sed -i "s|^command=.*|command=php $APP_LARAVEL_ROOT/artisan reverb:start --host=127.0.0.1 --port=$reverb_listen_port|" "$reverb_conf_file"
+  sudo sed -i "s|^user=.*|user=$username|" "$reverb_conf_file"
+  sudo sed -i "s|^stdout_logfile=.*|stdout_logfile=$APP_LARAVEL_ROOT/storage/logs/reverb.log|" "$reverb_conf_file"
   sudo supervisorctl reread
   sudo supervisorctl update
   sudo supervisorctl restart "reverb_$username" >/dev/null 2>&1 || true
