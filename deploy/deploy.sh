@@ -209,12 +209,25 @@ fi
 # and running reverb:start not sharing the same cache store). Uses sudo -n when available so deploy user
 # does not need an interactive password.
 title "Supervisor: restart queue/horizon and Reverb"
-supervisorctl_try() {
+_supervisorctl_bin=$(command -v supervisorctl 2>/dev/null || printf '%s' /usr/bin/supervisorctl)
+# Do not print supervisorctl's Python traceback on PermissionError.
+supervisorctl_restart_quiet() {
   command -v supervisorctl >/dev/null 2>&1 || return 1
-  if sudo -n supervisorctl "$@" 2>/dev/null; then
+  if sudo -n supervisorctl restart "$@" >/dev/null 2>&1; then
     return 0
   fi
-  supervisorctl "$@"
+  supervisorctl restart "$@" >/dev/null 2>&1
+}
+
+supervisorctl_status_text() {
+  command -v supervisorctl >/dev/null 2>&1 || return 1
+  local out
+  if out=$(sudo -n supervisorctl status "$@" 2>/dev/null); then
+    printf '%s\n' "$out"
+    return 0
+  fi
+  out=$(supervisorctl status "$@" 2>/dev/null) || true
+  printf '%s\n' "$out"
 }
 
 queue_supervisor_program=""
@@ -227,20 +240,23 @@ if [ -f "/etc/supervisor/conf.d/${username}.conf" ]; then
 fi
 
 if [ -n "$queue_supervisor_program" ]; then
-  if supervisorctl_try restart "$queue_supervisor_program"; then
+  if supervisorctl_restart_quiet "$queue_supervisor_program"; then
     status "Supervisor restarted: $queue_supervisor_program"
   else
-    status "Could not supervisorctl restart $queue_supervisor_program (run as root or configure sudo -n for supervisorctl)"
+    status "Could not supervisorctl restart ${queue_supervisor_program}: permission denied"
+    status "Fix once as root: create /etc/sudoers.d/99-deploy-supervisorctl containing exactly one line:"
+    status "${username} ALL=(ALL) NOPASSWD:${_supervisorctl_bin}"
+    status "Then: chmod 440 /etc/sudoers.d/99-deploy-supervisorctl && visudo -c -f /etc/sudoers.d/99-deploy-supervisorctl"
   fi
 else
   status "No /etc/supervisor/conf.d/${username}.conf — skipping queue/horizon Supervisor restart"
 fi
 
 if [ -d "$laravel_root/vendor/laravel/reverb" ] && [ -f "/etc/supervisor/conf.d/${username}_reverb.conf" ]; then
-  if supervisorctl_try restart "reverb_${username}"; then
+  if supervisorctl_restart_quiet "reverb_${username}"; then
     status "Supervisor restarted: reverb_${username}"
   else
-    status "Could not supervisorctl restart reverb_${username}"
+    status "Could not supervisorctl restart reverb_${username}: permission denied — use same sudoers line as queue/horizon"
   fi
 elif [ -d "$laravel_root/vendor/laravel/reverb" ]; then
   status "Reverb in vendor but no /etc/supervisor/conf.d/${username}_reverb.conf — run create_app or add the program"
@@ -249,15 +265,21 @@ fi
 if command -v supervisorctl >/dev/null 2>&1; then
   sleep 1
   if [ -n "$queue_supervisor_program" ]; then
-    if supervisorctl_try status "$queue_supervisor_program" 2>/dev/null | grep -q RUNNING; then
+    _qst=$(supervisorctl_status_text "$queue_supervisor_program")
+    if printf '%s\n' "$_qst" | grep -q RUNNING; then
       status "Supervisor reports $queue_supervisor_program: RUNNING"
+    elif [ -z "$_qst" ]; then
+      status "Could not read supervisorctl status for $queue_supervisor_program — if restart failed, add NOPASSWD sudoers line above"
     else
       status "Warning: $queue_supervisor_program not RUNNING after restart — check: sudo supervisorctl status"
     fi
   fi
   if [ -d "$laravel_root/vendor/laravel/reverb" ] && [ -f "/etc/supervisor/conf.d/${username}_reverb.conf" ]; then
-    if supervisorctl_try status "reverb_${username}:*" 2>/dev/null | grep -q RUNNING; then
+    _rst=$(supervisorctl_status_text "reverb_${username}:*")
+    if printf '%s\n' "$_rst" | grep -q RUNNING; then
       status "Supervisor reports reverb_${username}: RUNNING"
+    elif [ -z "$_rst" ]; then
+      status "Could not read supervisorctl status for reverb_${username} — if restart failed, add NOPASSWD sudoers line above"
     else
       status "Warning: reverb_${username} not RUNNING after restart — check logs under storage/logs/reverb.log"
     fi
