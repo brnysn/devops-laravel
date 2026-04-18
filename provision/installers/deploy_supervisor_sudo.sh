@@ -1,14 +1,24 @@
 #!/bin/bash
-# Run from provision (as root). Grant supervisorctl NOPASSWD for every user under /home/* that
-# has a deployments directory (Laravel deploy users). create_app also grants for new users.
+# Run from provision (as root) or once by hand: sudo bash this file.
+# Grant supervisorctl NOPASSWD for every user under /home/* that has a deployments directory.
 
 _installer_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+# shellcheck source=../../common/helpers.sh
+source "$_installer_dir/../../common/helpers.sh"
 # shellcheck source=../../common/grant_supervisorctl_sudo.sh
 source "$_installer_dir/../../common/grant_supervisorctl_sudo.sh"
 
+_deploy_supervisor_sudo_done() {
+  local code="${1:-0}"
+  if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    exit "$code"
+  fi
+  return "$code"
+}
+
 if ! command -v supervisorctl >/dev/null 2>&1; then
   status "supervisorctl not found; skipping sudoers drop-ins"
-  return 0
+  _deploy_supervisor_sudo_done 0
 fi
 
 granted_any=0
@@ -30,3 +40,5 @@ shopt -u nullglob
 if [ "$granted_any" -eq 0 ]; then
   status "No /home/*/deployments users found; create_app will add sudoers when each app user is created"
 fi
+
+_deploy_supervisor_sudo_done 0
