@@ -230,7 +230,13 @@ supervisorctl_status_text() {
   printf '%s\n' "$out"
 }
 
+# True if output looks like a real "supervisorctl status" table, not an RPC/permission error on stdout.
+_supervisorctl_status_looks_valid() {
+  printf '%s\n' "$1" | grep -qE '^[[:alnum:]_:-]+[[:space:]]+(STOPPED|STARTING|RUNNING|BACKOFF|STOPPING|EXITED|FATAL|UNKNOWN)'
+}
+
 queue_supervisor_program=""
+supervisor_restart_step_failed=0
 if [ -f "/etc/supervisor/conf.d/${username}.conf" ]; then
   if [ -d "$laravel_root/vendor/laravel/horizon" ]; then
     queue_supervisor_program="horizon_${username}"
@@ -243,6 +249,7 @@ if [ -n "$queue_supervisor_program" ]; then
   if supervisorctl_restart_quiet "$queue_supervisor_program"; then
     status "Supervisor restarted: $queue_supervisor_program"
   else
+    supervisor_restart_step_failed=1
     status "Could not supervisorctl restart ${queue_supervisor_program}: permission denied"
     status "Fix once as root: create /etc/sudoers.d/99-deploy-supervisorctl containing exactly one line:"
     status "${username} ALL=(ALL) NOPASSWD:${_supervisorctl_bin}"
@@ -256,20 +263,21 @@ if [ -d "$laravel_root/vendor/laravel/reverb" ] && [ -f "/etc/supervisor/conf.d/
   if supervisorctl_restart_quiet "reverb_${username}"; then
     status "Supervisor restarted: reverb_${username}"
   else
+    supervisor_restart_step_failed=1
     status "Could not supervisorctl restart reverb_${username}: permission denied — use same sudoers line as queue/horizon"
   fi
 elif [ -d "$laravel_root/vendor/laravel/reverb" ]; then
   status "Reverb in vendor but no /etc/supervisor/conf.d/${username}_reverb.conf — run create_app or add the program"
 fi
 
-if command -v supervisorctl >/dev/null 2>&1; then
+if command -v supervisorctl >/dev/null 2>&1 && [ "${supervisor_restart_step_failed:-0}" -eq 0 ]; then
   sleep 1
   if [ -n "$queue_supervisor_program" ]; then
     _qst=$(supervisorctl_status_text "$queue_supervisor_program")
     if printf '%s\n' "$_qst" | grep -q RUNNING; then
       status "Supervisor reports $queue_supervisor_program: RUNNING"
-    elif [ -z "$_qst" ]; then
-      status "Could not read supervisorctl status for $queue_supervisor_program — if restart failed, add NOPASSWD sudoers line above"
+    elif [ -z "$_qst" ] || ! _supervisorctl_status_looks_valid "$_qst"; then
+      status "Could not read supervisorctl status for $queue_supervisor_program — add NOPASSWD line above or run: sudo supervisorctl status $queue_supervisor_program"
     else
       status "Warning: $queue_supervisor_program not RUNNING after restart — check: sudo supervisorctl status"
     fi
@@ -278,12 +286,14 @@ if command -v supervisorctl >/dev/null 2>&1; then
     _rst=$(supervisorctl_status_text "reverb_${username}:*")
     if printf '%s\n' "$_rst" | grep -q RUNNING; then
       status "Supervisor reports reverb_${username}: RUNNING"
-    elif [ -z "$_rst" ]; then
-      status "Could not read supervisorctl status for reverb_${username} — if restart failed, add NOPASSWD sudoers line above"
+    elif [ -z "$_rst" ] || ! _supervisorctl_status_looks_valid "$_rst"; then
+      status "Could not read supervisorctl status for reverb_${username} — add NOPASSWD line above or run: sudo supervisorctl status 'reverb_${username}:*'"
     else
       status "Warning: reverb_${username} not RUNNING after restart — check logs under storage/logs/reverb.log"
     fi
   fi
+elif [ "${supervisor_restart_step_failed:-0}" -eq 1 ]; then
+  status "Skipping supervisorctl status checks — restart step had no permission. queue:restart / reverb:restart already ran; after sudoers fix, redeploy or sudo supervisorctl restart manually."
 fi
 
 # Cleanup Old Deployments
