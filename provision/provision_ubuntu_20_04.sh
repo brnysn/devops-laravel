@@ -264,6 +264,9 @@ case $installs_php_install in
     ;;
 esac
 
+title "Deploy users: NOPASSWD supervisorctl"
+source ./installers/deploy_supervisor_sudo.sh
+
 title "Status Report"
 report_binary_version() {
   local label="$1"

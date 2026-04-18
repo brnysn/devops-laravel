@@ -20,6 +20,7 @@ cd "$my_path"
 
 # Load common (sets username, deploy_directory, … from apps/$app_name.sh)
 source $my_path/../common/load_common.sh
+source "$common_path/grant_supervisorctl_sudo.sh"
 
 error "You are about to delete the following:"
 status "App config name: $app_name (deployment user: $username)"
@@ -102,6 +103,12 @@ then
     status "No supervisor configs found for $username"
   fi
 
+  title "Removing NOPASSWD supervisorctl for $username"
+  if revoke_supervisorctl_nopasswd_for_user "$username"; then
+    status "Removed /etc/sudoers.d/10-deploy-supervisorctl-${username} if present"
+  else
+    status "Warning: could not remove supervisorctl sudoers drop-in for $username"
+  fi
 
   title "Deleting Application Cron"
   if ! id "$username" >/dev/null 2>&1; then

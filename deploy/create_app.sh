@@ -20,6 +20,7 @@ cd "$my_path"
 
 # Load common
 source $my_path/../common/load_common.sh
+source "$common_path/grant_supervisorctl_sudo.sh"
 
 # Reverb (config.yml installs.reverb): port stable per username; nginx + .env + daemon when enabled
 reverb_enabled=0
@@ -392,6 +393,13 @@ if [ ! -f /etc/php/$installs_php_version/fpm/pool.d/$username.conf ]; then
     status "Created: /etc/php/$installs_php_version/fpm/pool.d/$username.conf"
 else
   status "Already exists: /etc/php/$installs_php_version/fpm/pool.d/$username.conf"
+fi
+
+title "Deploy user: passwordless supervisorctl"
+if grant_supervisorctl_nopasswd_for_user "$username"; then
+  status "Granted NOPASSWD supervisorctl for $username so deploy.sh can restart queue/horizon/reverb"
+else
+  status "Warning: could not write /etc/sudoers.d/10-deploy-supervisorctl-${username} — run create_app with a user that can sudo"
 fi
 
 # Create supervisor conf (Horizon if installed, else queue:work)
