@@ -22,13 +22,16 @@ cd "$my_path"
 source $my_path/../common/load_common.sh
 source "$common_path/grant_supervisorctl_sudo.sh"
 
-# Reverb (config.yml installs.reverb): port stable per username; nginx + .env + daemon when enabled
+# Reverb (config.yml installs.reverb.install + installs.reverb.port, default 9840): nginx + .env + supervisor
 reverb_enabled=0
 reverb_config_value="${installs_reverb:-${installs_reverb_install:-no}}"
 case "${reverb_config_value:-}" in
   [yY][eE][sS]|[yY]) reverb_enabled=1 ;;
 esac
-reverb_listen_port=$(( 9080 + $(printf '%s' "$username" | cksum | awk '{print $1 % 1000}') ))
+reverb_listen_port="${installs_reverb_port:-9840}"
+case "$reverb_listen_port" in
+  ''|*[!0-9]*) reverb_listen_port=9840 ;;
+esac
 
 typesense_enabled=0
 case "${installs_typesense_install:-}" in
@@ -130,7 +133,7 @@ configure_reverb_env() {
   upsert_env_value "$env_file" "REVERB_HOST" "$app_public_host"
   upsert_env_value "$env_file" "REVERB_PORT" "$app_public_port"
   upsert_env_value "$env_file" "REVERB_SCHEME" "$app_public_scheme"
-  upsert_env_value "$env_file" "REVERB_SERVER_HOST" "127.0.0.1"
+  upsert_env_value "$env_file" "REVERB_SERVER_HOST" "0.0.0.0"
   upsert_env_value "$env_file" "REVERB_SERVER_PORT" "$reverb_listen_port"
   upsert_env_value "$env_file" "VITE_REVERB_APP_KEY" '"${REVERB_APP_KEY}"'
   upsert_env_value "$env_file" "VITE_REVERB_HOST" '"${REVERB_HOST}"'
@@ -456,7 +459,7 @@ if [ "$reverb_enabled" -eq 1 ] && [ "$reverb_installed" -eq 1 ]; then
   # Fill template before reread. Use line-anchored / full-line subs so re-running
   # create_app does not double the program name (program: matches inside reverb_$username).
   sudo sed -i "1s|^\[program:.*\]|[program:reverb_$username]|" "$reverb_conf_file"
-  sudo sed -i "s|^command=.*|command=php $APP_LARAVEL_ROOT/artisan reverb:start --host=127.0.0.1 --port=$reverb_listen_port|" "$reverb_conf_file"
+  sudo sed -i "s|^command=.*|command=php $APP_LARAVEL_ROOT/artisan reverb:start --host=0.0.0.0 --port=$reverb_listen_port|" "$reverb_conf_file"
   sudo sed -i "s|^user=.*|user=$username|" "$reverb_conf_file"
   sudo sed -i "s|^stdout_logfile=.*|stdout_logfile=$APP_LARAVEL_ROOT/storage/logs/reverb.log|" "$reverb_conf_file"
   sudo supervisorctl reread

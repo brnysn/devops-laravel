@@ -8,6 +8,7 @@ grant_supervisorctl_nopasswd_for_user() {
   [ -n "$target_user" ] || return 1
   id "$target_user" >/dev/null 2>&1 || return 1
   sc=$(command -v supervisorctl 2>/dev/null) || return 1
+  sc=$(readlink -f "$sc" 2>/dev/null || printf '%s' "$sc")
   f="/etc/sudoers.d/10-deploy-supervisorctl-${target_user}"
   line="${target_user} ALL=(ALL) NOPASSWD:${sc}"
   if [ "$(id -u)" -ne 0 ]; then

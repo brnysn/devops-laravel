@@ -25,7 +25,9 @@ installs:
   mailhog: no
   ngrok: no
   postfix: no
-  reverb: yes
+  reverb:
+    install: yes
+    port: 9840
   typesense:
     install: yes
     version: "26.0"

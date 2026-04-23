@@ -191,6 +191,18 @@ if [ ! -f "$laravel_root/composer.json" ]; then
   fi
 fi
 
+# Reverb bind port: installs.reverb.port in config.yml (default 9840). Best-effort supervisor command sync.
+# Requires passwordless sudo for sed on that file, else skipped.
+reverb_listen_port="${installs_reverb_port:-9840}"
+case "$reverb_listen_port" in
+  ''|*[!0-9]*) reverb_listen_port=9840 ;;
+esac
+if [ -d "$laravel_root/vendor/laravel/reverb" ] && [ -f "/etc/supervisor/conf.d/${username}_reverb.conf" ]; then
+  if sudo -n sed -i "s|^command=.*|command=php $laravel_root/artisan reverb:start --host=0.0.0.0 --port=$reverb_listen_port|" "/etc/supervisor/conf.d/${username}_reverb.conf" 2>/dev/null; then
+    status "Reverb supervisor command aligned with config (port $reverb_listen_port, host 0.0.0.0)"
+  fi
+fi
+
 title "Refreshing Long-Running Processes"
 # Graceful Laravel signals (workers finish current job / Horizon master exits / Reverb sees cache flag).
 if [ -d "$laravel_root/vendor/laravel/horizon" ]; then
@@ -209,24 +221,26 @@ fi
 # and running reverb:start not sharing the same cache store). Uses sudo -n when available so deploy user
 # does not need an interactive password.
 title "Supervisor: restart queue/horizon and Reverb"
-_supervisorctl_bin=$(command -v supervisorctl 2>/dev/null || printf '%s' /usr/bin/supervisorctl)
+# Must match sudoers NOPASSWD path exactly (use realpath, not PATH lookup via `sudo supervisorctl`).
+_sc_probe=$(command -v supervisorctl 2>/dev/null || printf '%s' /usr/bin/supervisorctl)
+_supervisorctl_bin=$(readlink -f "$_sc_probe" 2>/dev/null || printf '%s' "$_sc_probe")
 # Do not print supervisorctl's Python traceback on PermissionError.
 supervisorctl_restart_quiet() {
-  command -v supervisorctl >/dev/null 2>&1 || return 1
-  if sudo -n supervisorctl restart "$@" >/dev/null 2>&1; then
+  [ -x "$_supervisorctl_bin" ] || return 1
+  if sudo -n "$_supervisorctl_bin" restart "$@" >/dev/null 2>&1; then
     return 0
   fi
-  supervisorctl restart "$@" >/dev/null 2>&1
+  "$_supervisorctl_bin" restart "$@" >/dev/null 2>&1
 }
 
 supervisorctl_status_text() {
-  command -v supervisorctl >/dev/null 2>&1 || return 1
+  [ -x "$_supervisorctl_bin" ] || return 1
   local out
-  if out=$(sudo -n supervisorctl status "$@" 2>/dev/null); then
+  if out=$(sudo -n "$_supervisorctl_bin" status "$@" 2>/dev/null); then
     printf '%s\n' "$out"
     return 0
   fi
-  out=$(supervisorctl status "$@" 2>/dev/null) || true
+  out=$("$_supervisorctl_bin" status "$@" 2>/dev/null) || true
   printf '%s\n' "$out"
 }
 
@@ -251,9 +265,9 @@ if [ -n "$queue_supervisor_program" ]; then
   else
     supervisor_restart_step_failed=1
     status "Could not supervisorctl restart ${queue_supervisor_program}: permission denied"
-    status "Fix once as root: create /etc/sudoers.d/99-deploy-supervisorctl containing exactly one line:"
+    status "Expected sudoers file: /etc/sudoers.d/10-deploy-supervisorctl-${username} with line:"
     status "${username} ALL=(ALL) NOPASSWD:${_supervisorctl_bin}"
-    status "Then: chmod 440 /etc/sudoers.d/99-deploy-supervisorctl && visudo -c -f /etc/sudoers.d/99-deploy-supervisorctl"
+    status "Re-run: sudo bash $my_path/../provision/installers/deploy_supervisor_sudo.sh"
   fi
 else
   status "No /etc/supervisor/conf.d/${username}.conf — skipping queue/horizon Supervisor restart"
