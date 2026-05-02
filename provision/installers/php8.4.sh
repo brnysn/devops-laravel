@@ -20,6 +20,7 @@ apt_retry() {
 
     echo "$output" >&2
     if [[ "$output" == *"Could not get lock"* || "$output" == *"Unable to lock directory"* ]]; then
+      echo "apt is busy (attempt ${attempt}/${max_attempts}); waiting ${sleep_seconds}s..." >&2
       sleep "$sleep_seconds"
       attempt=$((attempt + 1))
       continue
