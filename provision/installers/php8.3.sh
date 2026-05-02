@@ -5,6 +5,24 @@ php_install_fail() {
 }
 
 php83_install_ok=true
+ubuntu_codename=""
+if [ -f /etc/os-release ]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  ubuntu_codename="${UBUNTU_CODENAME:-$VERSION_CODENAME}"
+fi
+
+# Ondrej PHP PPA supports LTS releases; skip on other codenames to avoid apt hangs/timeouts.
+case "${ubuntu_codename}" in
+  focal|jammy|noble)
+    ;;
+  *)
+    php83_install_ok=false
+    php_install_fail "skipping ondrej/php on unsupported codename: ${ubuntu_codename:-unknown}"
+    # Disable previously-added ondrej sources so later apt operations do not stall.
+    sudo rm -f /etc/apt/sources.list.d/ondrej-ubuntu-php-*.list /etc/apt/sources.list.d/ondrej-ubuntu-php-*.sources 2>/dev/null || true
+    ;;
+esac
 
 # Install Some PPAs
 if $php83_install_ok; then
