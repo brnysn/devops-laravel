@@ -7,27 +7,27 @@ php_install_fail() {
 php83_install_ok=true
 
 # Install Some PPAs
-if ! sudo apt-add-repository ppa:ondrej/php -y; then
-  php83_install_ok=false
-  php_install_fail "unable to add ppa:ondrej/php"
+if $php83_install_ok; then
+  if ! timeout 60s sudo apt-add-repository ppa:ondrej/php -y; then
+    php83_install_ok=false
+    php_install_fail "unable to add ppa:ondrej/php"
+  fi
 fi
 
 # Update Package Lists
-if ! sudo apt-get update -y; then
-  php83_install_ok=false
-  php_install_fail "apt-get update failed after adding ondrej/php"
+if $php83_install_ok; then
+  if ! timeout 120s sudo apt-get -o Acquire::Retries=2 -o Acquire::ForceIPv4=true -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update -y; then
+    php83_install_ok=false
+    php_install_fail "apt-get update failed after adding ondrej/php"
+  fi
 fi
 
-php83_candidate="$(apt-cache policy php8.3-cli | awk '/Candidate:/ {print $2}')"
-if [ -z "$php83_candidate" ] || [ "$php83_candidate" = "(none)" ]; then
-  php83_install_ok=false
-  ubuntu_codename=""
-  if [ -f /etc/os-release ]; then
-    # shellcheck disable=SC1091
-    . /etc/os-release
-    ubuntu_codename="${UBUNTU_CODENAME:-$VERSION_CODENAME}"
+if $php83_install_ok; then
+  php83_candidate="$(apt-cache policy php8.3-cli | awk '/Candidate:/ {print $2}')"
+  if [ -z "$php83_candidate" ] || [ "$php83_candidate" = "(none)" ]; then
+    php83_install_ok=false
+    php_install_fail "php8.3-cli has no install candidate (codename: ${ubuntu_codename:-unknown}). Will install distro PHP instead."
   fi
-  php_install_fail "php8.3-cli has no install candidate (codename: ${ubuntu_codename:-unknown}). Will install distro PHP instead."
 fi
 
 if $php83_install_ok; then
