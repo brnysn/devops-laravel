@@ -6,6 +6,26 @@ ACTIVE_PHP_VERSION="$TARGET_PHP_VERSION"
 FPM_INI=""
 CLI_INI=""
 
+apt_wait() {
+  local waited=0
+  local max_wait=180
+  while sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 \
+    || sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 \
+    || sudo fuser /var/cache/apt/archives/lock >/dev/null 2>&1; do
+    if [ "$waited" -ge "$max_wait" ]; then
+      echo "ERROR: apt/dpkg lock held for too long; aborting." >&2
+      return 1
+    fi
+    sleep 3
+    waited=$((waited + 3))
+  done
+}
+
+apt_install() {
+  apt_wait
+  sudo apt-get install -y --allow-change-held-packages "$@"
+}
+
 ondrej_release_exists() {
   local codename
   codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")"
@@ -13,10 +33,10 @@ ondrej_release_exists() {
 }
 
 install_requested_version() {
-  sudo apt-get install -y --allow-change-held-packages \
+  apt_install \
   "php${TARGET_PHP_VERSION}-imagick" imagemagick
 
-  sudo apt-get install -y --allow-change-held-packages \
+  apt_install \
   "php${TARGET_PHP_VERSION}" "php${TARGET_PHP_VERSION}-bcmath" "php${TARGET_PHP_VERSION}-bz2" "php${TARGET_PHP_VERSION}-cgi" "php${TARGET_PHP_VERSION}-cli" "php${TARGET_PHP_VERSION}-common" "php${TARGET_PHP_VERSION}-curl" "php${TARGET_PHP_VERSION}-dba" "php${TARGET_PHP_VERSION}-dev" \
   "php${TARGET_PHP_VERSION}-enchant" "php${TARGET_PHP_VERSION}-fpm" "php${TARGET_PHP_VERSION}-gd" "php${TARGET_PHP_VERSION}-gmp" "php${TARGET_PHP_VERSION}-imap" "php${TARGET_PHP_VERSION}-interbase" "php${TARGET_PHP_VERSION}-intl" "php${TARGET_PHP_VERSION}-ldap" \
   "php${TARGET_PHP_VERSION}-mbstring" "php${TARGET_PHP_VERSION}-mysql" "php${TARGET_PHP_VERSION}-odbc" "php${TARGET_PHP_VERSION}-opcache" "php${TARGET_PHP_VERSION}-pgsql" "php${TARGET_PHP_VERSION}-phpdbg" "php${TARGET_PHP_VERSION}-pspell" "php${TARGET_PHP_VERSION}-readline" \
@@ -26,10 +46,12 @@ install_requested_version() {
 
 install_distro_php_fallback() {
   echo "Requested PHP ${TARGET_PHP_VERSION} unavailable on this Ubuntu suite; installing distro PHP instead." >&2
-  sudo apt-get install -y --allow-change-held-packages \
-  php php-cli php-fpm php-bcmath php-bz2 php-curl php-dba php-dev php-enchant php-gd php-gmp php-imap php-intl php-ldap \
-  php-mbstring php-mysql php-odbc php-opcache php-pgsql php-phpdbg php-pspell php-readline php-snmp php-soap php-sqlite3 php-tidy \
-  php-xml php-xsl php-zip php-imagick php-memcached php-redis imagemagick
+  apt_install php php-cli php-fpm imagemagick
+  for pkg in php-bcmath php-bz2 php-curl php-dba php-dev php-enchant php-gd php-gmp php-imap php-intl php-ldap \
+    php-mbstring php-mysql php-odbc php-opcache php-pgsql php-phpdbg php-pspell php-readline php-snmp php-soap php-sqlite3 php-tidy \
+    php-xml php-xsl php-zip php-imagick php-memcached php-redis; do
+    apt_install "$pkg" 2>/dev/null || true
+  done
 }
 
 # Install Some PPAs (when supported by current distro)
@@ -38,6 +60,7 @@ if ondrej_release_exists; then
 fi
 
 # Update Package Lists
+apt_wait
 sudo apt-get update -y || sudo apt-get -o Acquire::ForceIPv4=true update -y
 
 if ! install_requested_version; then
