@@ -1,19 +1,19 @@
 servers: 'none'
 deploy:
-  keep_releases: 2
+  keep_releases: 3
 installs:
   swapspace:
-    install: no
+    install: yes
     # Uses total RAM, capped at this value when set. Use null to allocate swap equal to total RAM.
     max_size_in_mb: 1024
   nginx: yes
   php:
     install: yes
     composer: yes
-    versions: "8.4,8.3"
+    versions: "8.3,8.4"
   node_and_npm: yes
   redis: yes
-  sqlite: no
+  sqlite: yes
   database:
     mysql: yes
     mariadb: no
@@ -26,10 +26,10 @@ installs:
   ngrok: no
   postfix: no
   reverb:
-    install: no
+    install: yes
     port: 9840
   typesense:
-    install: no
+    install: yes
     version: "26.0"
     api_key: change-me-typesense-key
     api_address: 127.0.0.1

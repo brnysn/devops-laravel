@@ -38,8 +38,8 @@ fi
 # Configure php.ini for CLI
 #sudo sed -i "s/error_reporting = .*/error_reporting = E_ALL/" /etc/php/8.3/cli/php.ini
 #sudo sed -i "s/display_errors = .*/display_errors = On/" /etc/php/8.3/cli/php.ini
-sudo sed -i "s/memory_limit = .*/memory_limit = 1G/" /etc/php/8.3/cli/php.ini
-sudo sed -i "s/;date.timezone.*/date.timezone = UTC+3/" /etc/php/8.3/cli/php.ini
+#sudo sed -i "s/memory_limit = .*/memory_limit = 512M/" /etc/php/8.3/cli/php.ini
+#sudo sed -i "s/;date.timezone.*/date.timezone = UTC/" /etc/php/8.3/cli/php.ini
 
 # Configure Xdebug
 #sudo bash -c 'echo "xdebug.mode = debug" >> /etc/php/8.3/mods-available/xdebug.ini'
@@ -52,10 +52,10 @@ sudo sed -i "s/;date.timezone.*/date.timezone = UTC+3/" /etc/php/8.3/cli/php.ini
 #sudo sed -i "s/error_reporting = .*/error_reporting = E_ALL/" /etc/php/8.3/fpm/php.ini
 #sudo sed -i "s/display_errors = .*/display_errors = On/" /etc/php/8.3/fpm/php.ini
 #sudo sed -i "s/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/" /etc/php/8.3/fpm/php.ini
-sudo sed -i "s/memory_limit = .*/memory_limit = 1G/" /etc/php/8.3/fpm/php.ini
-sudo sed -i "s/upload_max_filesize = .*/upload_max_filesize = 100M/" /etc/php/8.3/fpm/php.ini
-sudo sed -i "s/post_max_size = .*/post_max_size = 100M/" /etc/php/8.3/fpm/php.ini
-sudo sed -i "s/;date.timezone.*/date.timezone = UTC+3/" /etc/php/8.3/fpm/php.ini
+#sudo sed -i "s/memory_limit = .*/memory_limit = 512M/" /etc/php/8.3/fpm/php.ini
+#sudo sed -i "s/upload_max_filesize = .*/upload_max_filesize = 100M/" /etc/php/8.3/fpm/php.ini
+#sudo sed -i "s/post_max_size = .*/post_max_size = 100M/" /etc/php/8.3/fpm/php.ini
+#sudo sed -i "s/;date.timezone.*/date.timezone = UTC/" /etc/php/8.3/fpm/php.ini
 
 sudo printf "[openssl]\n" | sudo tee -a /etc/php/8.3/fpm/php.ini
 sudo printf "openssl.cainfo = /etc/ssl/certs/ca-certificates.crt\n" | sudo tee -a /etc/php/8.3/fpm/php.ini
