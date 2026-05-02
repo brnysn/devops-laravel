@@ -1,10 +1,30 @@
 #!/bin/bash
+set -euo pipefail
+
+ensure_php_repo_available() {
+  local version="$1"
+  local pkg="php${version}-cli"
+  local candidate
+
+  candidate="$(apt-cache policy "$pkg" | awk '/Candidate:/ {print $2; exit}')"
+  if [ "$candidate" = "(none)" ] || [ -z "$candidate" ]; then
+    echo "php${version} packages not found after apt update; retrying with IPv4..." >&2
+    sudo apt-get -o Acquire::ForceIPv4=true update -y
+    candidate="$(apt-cache policy "$pkg" | awk '/Candidate:/ {print $2; exit}')"
+  fi
+
+  if [ "$candidate" = "(none)" ] || [ -z "$candidate" ]; then
+    echo "ERROR: php${version} packages are unavailable. Check connectivity to ppa.launchpadcontent.net (IPv4/IPv6/firewall)." >&2
+    return 1
+  fi
+}
 
 # Install Some PPAs
 sudo apt-add-repository ppa:ondrej/php -y
 
 # Update Package Lists
 sudo apt-get update -y
+ensure_php_repo_available "8.4"
 
 # Only php8.4-* here: unversioned php-* pulls Ondrej's default PHP (e.g. 8.5) and steals the `php` alternative
 sudo apt-get install -y --allow-change-held-packages \
