@@ -6,24 +6,34 @@ ACTIVE_PHP_VERSION="$TARGET_PHP_VERSION"
 FPM_INI=""
 CLI_INI=""
 
-apt_wait() {
-  local waited=0
-  local max_wait=180
-  while sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 \
-    || sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 \
-    || sudo fuser /var/cache/apt/archives/lock >/dev/null 2>&1; do
-    if [ "$waited" -ge "$max_wait" ]; then
-      echo "ERROR: apt/dpkg lock held for too long; aborting." >&2
-      return 1
+apt_retry() {
+  local max_attempts=40
+  local sleep_seconds=5
+  local attempt=1
+  local output=""
+
+  while [ "$attempt" -le "$max_attempts" ]; do
+    if output=$("$@" 2>&1); then
+      [ -n "$output" ] && echo "$output"
+      return 0
     fi
-    sleep 3
-    waited=$((waited + 3))
+
+    echo "$output" >&2
+    if [[ "$output" == *"Could not get lock"* || "$output" == *"Unable to lock directory"* ]]; then
+      sleep "$sleep_seconds"
+      attempt=$((attempt + 1))
+      continue
+    fi
+
+    return 1
   done
+
+  echo "ERROR: apt/dpkg lock held for too long; aborting." >&2
+  return 1
 }
 
 apt_install() {
-  apt_wait
-  sudo apt-get install -y --allow-change-held-packages "$@"
+  apt_retry sudo apt-get -o DPkg::Lock::Timeout=120 install -y --allow-change-held-packages "$@"
 }
 
 ondrej_release_exists() {
@@ -60,8 +70,9 @@ if ondrej_release_exists; then
 fi
 
 # Update Package Lists
-apt_wait
-sudo apt-get update -y || sudo apt-get -o Acquire::ForceIPv4=true update -y
+if ! apt_retry sudo apt-get -o DPkg::Lock::Timeout=120 update -y; then
+  apt_retry sudo apt-get -o DPkg::Lock::Timeout=120 -o Acquire::ForceIPv4=true update -y
+fi
 
 if ! install_requested_version; then
   install_distro_php_fallback
