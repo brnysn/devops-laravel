@@ -126,10 +126,15 @@ case $installs_php_install in
         installer_path="./installers/php${php_version}.sh"
         if [ -f "$installer_path" ]; then
           title "Install PHP Version ($php_version)"
-          source "$installer_path"
-          status "php$php_version installed"
+          if source "$installer_path"; then
+            status "php$php_version installed"
+          else
+            status "php$php_version installation failed"
+            exit 1
+          fi
         else
           status "php$php_version installer not found (expected: $installer_path)"
+          exit 1
         fi
       done
     fi
