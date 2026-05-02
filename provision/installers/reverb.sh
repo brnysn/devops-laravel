@@ -3,9 +3,7 @@
 # Laravel Reverb: PHP pcntl only. Per-app `reverb:start` is defined in deploy/create_app.sh
 # (path is always /home/<user>/deployments/current — not configurable here).
 
-PHP_VER="${installs_php_version:-${installs_php_versions%%,*}}"
-PHP_VER="$(echo "$PHP_VER" | xargs)"
-[ -z "$PHP_VER" ] && PHP_VER="8.3"
+PHP_VER="${installs_php_version:-8.3}"
 
 if ! sudo apt-get install -y "php${PHP_VER}-pcntl" 2>/dev/null; then
   if php -m 2>/dev/null | grep -qx 'pcntl'; then

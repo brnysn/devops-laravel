@@ -22,20 +22,6 @@ fi
 source $parent_path/../common/parse_yaml.sh
 eval $(parse_yaml $parent_path/../config.yml)
 
-# PHP config normalization:
-# - Preferred: installs.php.versions (comma-separated, first entry is default)
-# - Backward compatible: installs.php.version
-if [ -n "${installs_php_versions:-}" ]; then
-  IFS=',' read -ra php_versions_array <<< "$installs_php_versions"
-  for raw_version in "${php_versions_array[@]}"; do
-    parsed_version="$(echo "$raw_version" | xargs)"
-    if [ -n "$parsed_version" ]; then
-      installs_php_version="$parsed_version"
-      break
-    fi
-  done
-fi
-
 # Non-interactive apt + needrestart (avoids "Newer kernel available" whiptail over SSH)
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
@@ -106,36 +92,10 @@ esac
 title "Install PHP Version"
 case $installs_php_install in
   [yY][eE][sS]|[yY])
-    php_versions_csv="${installs_php_versions:-${installs_php_version:-}}"
-    if [ -z "$php_versions_csv" ]; then
-      status "php version not configured (set installs.php.versions)"
-    else
-      IFS=',' read -ra php_versions_array <<< "$php_versions_csv"
-      seen_versions=","
-      for raw_version in "${php_versions_array[@]}"; do
-        php_version="$(echo "$raw_version" | xargs)"
-        if [ -z "$php_version" ]; then
-          continue
-        fi
-
-        case "$seen_versions" in
-          *",$php_version,"*) continue ;;
-        esac
-        seen_versions="${seen_versions}${php_version},"
-
-        installer_path="./installers/php${php_version}.sh"
-        if [ -f "$installer_path" ]; then
-          title "Install PHP Version ($php_version)"
-          source "$installer_path"
-          status "php$php_version installed"
-        else
-          status "php$php_version installer not found (expected: $installer_path)"
-        fi
-      done
-    fi
-    ;;
+    source "./installers/php${installs_php_version}.sh"
+    status "php$installs_php_version installed";;
   *)
-    status "not installing php";;
+    status "not installing php$installs_php_version";;
 esac
 
 title "Install Composer"
