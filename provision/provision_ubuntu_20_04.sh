@@ -92,8 +92,11 @@ esac
 title "Install PHP Version"
 case $installs_php_install in
   [yY][eE][sS]|[yY])
-    source "./installers/php${installs_php_version}.sh"
-    status "php$installs_php_version installed";;
+    if source "./installers/php${installs_php_version}.sh"; then
+      status "php$installs_php_version installed"
+    else
+      error "php$installs_php_version installation failed; continuing provisioning"
+    fi;;
   *)
     status "not installing php$installs_php_version";;
 esac
